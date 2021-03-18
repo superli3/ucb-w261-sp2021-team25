@@ -109,39 +109,39 @@ spark
 # MAGIC > __1a)__ Give an example of a dataset that would be appropriate to represent as a graph. 
 # MAGIC > What are the nodes/edges in this dataset? Is the graph you describe 'directed' or 'undirected'? 
 # MAGIC > What would the average "in-degree" of a node mean in the context of your example?  
-# MAGIC > * For example, the relationship of twitter users is would be appropriate to represent as a graph. 
+# MAGIC > * For example, the relationship of twitter users would be appropriate to represent as a graph. 
 # MAGIC > * In the twitter users example, nodes are users, and their relationship is the edges. 
-# MAGIC > * In the twitter example, the edge is directed. The reason is that in twitter, userA can follow userB, but userB does not neccesarily follow userA. 
-# MAGIC > * Say UserA follows userA, then the edge start at UserA and has the arrow pointing toward userB. And userA is a follower of UserB in this case. 
-# MAGIC > * In-degree represent the number of incoming neighbors, or followers. 
-# MAGIC > * The averege "in-degree" of a node is the average number of followers a user has. 
+# MAGIC > * In the twitter example, the edge is directed. The reason is that in twitter, userA can follow userB, but userB does not necessarily follow userA. 
+# MAGIC > * Say UserA follows userA, then the edge starts at UserA and has the arrow pointing toward userB. And userA is a follower of UserB in this case. 
+# MAGIC > * In-degree represents the number of incoming neighbors, or followers. 
+# MAGIC > * The average "in-degree" of a node is the average number of followers a user has. 
 # MAGIC 
 # MAGIC 
 # MAGIC > __1b)__ Other than their size/scale, what makes graphs uniquely challenging to work with in the map-reduce paradigm?
-# MAGIC > * It is challenging for map-reduce. The reason is a node could have many neighbors, and thus the results of a mapper might need to arrive a different reducers. 
-# MAGIC > * Say if we have 10 mappers, and each mapper produce 10 results, and each of theses 10 results need to arrive a different reducers.
-# MAGIC > * With 10 mappers, we might ahve 100 results that need to do large amount of shuffling and combing before we can do the next step of computation. 
-# MAGIC > * And that shuffling and combining is expensive as data traffice is costly. 
-# MAGIC > * In addition, for graph computation, we have to do matrix multiplication. And if the matrix is very big, and matrix mulitplication is expensive, a sinlge machine might not be able to fit the all of that. 
+# MAGIC > * It is challenging for map-reduce. The reason is a node could have many neighbors, and thus the results of a mapper might need to arrive at different reducers. 
+# MAGIC > * Say if we have 10 mappers, and each mapper produces 10 results, and each of these 10 results need to arrive at different reducers.
+# MAGIC > * With 10 mappers, we might have 100 results that need to do a large amount of shuffling and combing before we can do the next step of computation. 
+# MAGIC > * And that shuffling and combining is expensive as data traffic is costly. 
+# MAGIC > * In addition, for graph computation, we have to do matrix multiplication. And if the matrix is very big, and matrix multiplication is expensive, a single machine might not be able to fit the all of that. 
 # MAGIC > * One thing that can make graphs challenging to work with is that there are not necessarily natural partitionings of them. In other words, paths an algorithm may take through the graph might make it impossible to assign some nodes to an individual partition of the dataset.
 # MAGIC 
 # MAGIC 
 # MAGIC > __c)__ Briefly describe Dijskra's algorithm (goal/approach). What specific design component makes this approach hard to parallelize?
-# MAGIC >> * Dijstka is the algorithm's goal is the find the shortest path from starting position to the destination. 
+# MAGIC >> * Dijstka is the algorithm's goal is to find the shortest path from starting position to the destination. 
 # MAGIC >> * The approach Dijska take is:
 # MAGIC >> * The approach is we always pick the next node that is unvisited and has the shortest distance from the current node (with the info we have up until this point). 
 # MAGIC >> * When we are at the next node, we again update the distance of all of its neighboring nodes. 
 # MAGIC >> * Then again, we pick the next unvisited node with the shortest distance, and go there. 
 # MAGIC >> * We do so until we reach our destination node. 
 # MAGIC 
-# MAGIC >> * When we pick which node to go next, we need to know the latest information of all the neighboring node. And the next node will update the information of neighbor nodes. And that update decide which node we go next again.
-# MAGIC >> * In Dijkstra, the order of node visit matter! Becaseu that ensures that we use the least cost to find the shortest path.
+# MAGIC >> * When we pick which node to go next, we need to know the latest information of all the neighboring node. And the next node will update the information of neighbor nodes. And that update decides which node we go next again.
+# MAGIC >> * In Dijkstra, the order of node visits matter! Because that ensures that we use the least cost to find the shortest path.
 # MAGIC >> * Thus in this approach, we can ONLY VISIT one node at a time. That means we cannot compute the results for several nodes at the same time. 
 # MAGIC 
 # MAGIC 
 # MAGIC >__d)__ How does parallel breadth-first-search get around the problem that you identified in part `c`? At what expense?
-# MAGIC >> * In breadth-first-search, it is okay to visit the neighbors of current node at the SAME TIME, which mean we can visit the neighbor of the current node in parallel.
-# MAGIC >> * If visit a node has some cost, then breath-first-search will not guarantee that we utilized minimum cost.
+# MAGIC >> * In breadth-first-search, it is okay to visit the neighbors of the current node at the SAME TIME, which means we can visit the neighbor of the current node in parallel.
+# MAGIC >> * If visiting a node has some cost, then breath-first-search will not guarantee that we utilized minimum cost.
 
 # COMMAND ----------
 
