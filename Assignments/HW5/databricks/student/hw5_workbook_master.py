@@ -1025,14 +1025,13 @@ display(dbutils.fs.ls(hw5_path))
 # COMMAND ----------
 
 import json
-with open('/dbfs/user/' + username + '/HW5/top20.json') as json_data:
+with open('/dbfs/user/jeffli930@berkeley.edu/HW5/top20.json') as json_data:
     d = json.load(json_data)
     json_data.close()
-    
-print("PageRank           | Page id              ")
-print("==============================================")
-for pagerank_node in d:
-  print(str(np.round(pagerank_node[1],6)) + "    |    " + str(pagerank_node[0]))
+
+df = pd.DataFrame(d)
+df.columns = ['Page ID', 'Page Rank']
+df
 
 # COMMAND ----------
 
