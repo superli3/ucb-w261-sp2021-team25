@@ -76,6 +76,7 @@
 
 // COMMAND ----------
 
+// MAGIC 
 // MAGIC %python 
 // MAGIC 
 // MAGIC df_airlines = sqlContext.table("group25.phase_1_processed_airline")
@@ -93,31 +94,72 @@
 // MAGIC %python
 // MAGIC 
 // MAGIC sampledDf = sqlContext.sql("""SELECT *
-// MAGIC                               FROM group25.phase_1_processed_airline TABLESAMPLE(20000 ROWS)
+// MAGIC                               FROM group25.phase_1_processed_airline TABLESAMPLE(40000 ROWS)
 // MAGIC                               WHERE DEP_DEL15 IS NOT NULL""").toPandas()
 
 // COMMAND ----------
 
 // MAGIC %python
+// MAGIC 
 // MAGIC alt.data_transformers.disable_max_rows()
-// MAGIC dist = sampledDf[["DEP_DELAY", "DEP_DEL15", "DISTANCE"]]
-// MAGIC scatter = alt.Chart(dist).mark_point().encode(
-// MAGIC   x="DEP_DELAY:Q",
-// MAGIC   y="DISTANCE:Q"
-// MAGIC )
-// MAGIC box = alt.Chart(dist).mark_boxplot().encode(
-// MAGIC   x="DEP_DEL15:O",
-// MAGIC   y="DISTANCE:Q"
-// MAGIC ).properties(width=300)
-// MAGIC alt.hconcat(scatter, box)
+// MAGIC 
+// MAGIC def plot_cont_vs_delay(data, col_name):
+// MAGIC   dist = data[["DEP_DELAY", "DEP_DEL15", col_name]]
+// MAGIC   scatter = alt.Chart(dist).mark_point().encode(
+// MAGIC     x="DEP_DELAY:Q",
+// MAGIC     y=f'{col_name}:Q',
+// MAGIC     tooltip=[col_name, 'DEP_DELAY', 'DEP_DEL15']
+// MAGIC   ).properties(width=450).interactive()
+// MAGIC 
+// MAGIC   box = alt.Chart(dist).mark_boxplot().encode(
+// MAGIC     x="DEP_DEL15:O",
+// MAGIC     y=f'{col_name}:Q'
+// MAGIC   ).properties(width=450)
+// MAGIC   both = alt.hconcat(scatter, box)
+// MAGIC   both.title = f'{col_name} vs. Delay'
+// MAGIC   return both
+// MAGIC 
+// MAGIC def plot_cat_vs_delay(data, col_name):
+// MAGIC   dist = data[["DEP_DELAY", "DEP_DEL15", col_name]]
+// MAGIC   scatter = alt.Chart(dist).mark_boxplot().encode(
+// MAGIC     y="DEP_DELAY:Q",
+// MAGIC     x=f'{col_name}:N',
+// MAGIC     tooltip=[col_name, 'DEP_DELAY', 'DEP_DEL15']
+// MAGIC   ).properties(width=450).interactive()
+// MAGIC 
+// MAGIC   box = alt.Chart(dist).mark_bar().encode(
+// MAGIC     x=f'{col_name}:N',
+// MAGIC     y="count():Q",
+// MAGIC     color="DEP_DEL15:O"
+// MAGIC   ).properties(width=450).properties(width=300)
+// MAGIC   both = alt.hconcat(scatter, box)
+// MAGIC   both.title = f'{col_name} vs. Delay'
+// MAGIC   return both
+// MAGIC   
 
 // COMMAND ----------
 
-// MAGIC %python 
-// MAGIC #sns.barplot(x="ORIGIN", hue="DEP_DEL15", stacked=True, data=df_plot)
-// MAGIC df_plot = sampledDf.groupby(['DEP_DEL15', 'DAY_OF_WEEK']).size().reset_index()
-// MAGIC df_plot
-// MAGIC sns.boxplot(x="DAY_OF_WEEK", data=df_plot)
+// MAGIC %python
+// MAGIC 
+// MAGIC plot_cont_vs_delay(sampledDf, "DISTANCE")
+
+// COMMAND ----------
+
+// MAGIC %python
+// MAGIC 
+// MAGIC plot_cat_vs_delay(sampledDf, "ORIGIN")
+
+// COMMAND ----------
+
+// MAGIC %python
+// MAGIC 
+// MAGIC plot_cat_vs_delay(sampledDf, "DEST")
+
+// COMMAND ----------
+
+// MAGIC %python
+// MAGIC 
+// MAGIC plot_cat_vs_delay(sampledDf, "DAY_OF_WEEK")
 
 // COMMAND ----------
 
@@ -128,6 +170,7 @@
 import org.apache.spark._
 import org.apache.spark.graphx._
 import org.apache.spark.rdd.RDD
+import org.apache.spark.sql.DataFrame
 import org.apache.spark.sql.functions.{col, concat, lit}
 
 import org.apache.spark.graphx.GraphLoader
@@ -157,56 +200,90 @@ println(s"Count of flights, 2015: ${airlines2015.count()}")
 
 // COMMAND ----------
 
+// starting out with 2015 data only as a test set...
+val airlinesFull = spark.read.option("header", "true").parquet(f"dbfs:/mnt/mids-w261/datasets_final_project/parquet_airlines_data/201*.parquet")
+display(airlinesFull.sample(false, 0.00001))
+
+// COMMAND ----------
+
+println(s"Count of flights, Full: ${airlinesFull.count()}")
+
+// COMMAND ----------
+
  def code(str: String) = str.foldLeft(0L) { case (code, c) => 31*code + c }
 
 // COMMAND ----------
 
-val airportVerticies: RDD[(VertexId, String)] = airlines2015
-  .select("ORIGIN")
-  .union(airlines2015.select("DEST"))
-  .distinct()
-  .rdd
-  .map(x => (code(x.getString(0)), x.getString(0)))
+def buildVerticies(data: DataFrame): RDD[(VertexId, String)] = {
+  return data
+    .select("ORIGIN")
+    .union(airlines2015.select("DEST"))
+    .distinct()
+    .rdd
+    .map(x => (code(x.getString(0)), x.getString(0)))
+}
 
+val airportVerticies2015 = buildVerticies(airlines2015)
 airportVerticies.take(1)
 
 // COMMAND ----------
 
-println(s"Count of airports, 2015: ${airportVerticies.count()}")
+val airportVerticiesFull = buildVerticies(airlinesFull)
 
 // COMMAND ----------
 
-val allEdges = airlines2015.select("ORIGIN", "DEST")
-
-val airportEdges:RDD[Edge[Long]] = airlines2015
-  .select(col("ORIGIN"), col("DEST"))
-  .rdd
-  .map(row => Edge(code(row.getString(0)), code(row.getString(1)), 1))
-
-airportEdges.take(1)
+println(s"Count of airports, 2015: ${airportVerticies2015.count()}")
+println(s"Count of airports, full: ${airportVerticiesFull.count()}")
 
 // COMMAND ----------
 
-val airportGraph = Graph(airportVerticies, airportEdges)
-airportGraph.cache()
+def buildEdges(data: DataFrame): RDD[Edge[Long]] = {
+  return data 
+    .select(col("ORIGIN"), col("DEST"))
+    .rdd
+    .map(row => Edge(code(row.getString(0)), code(row.getString(1)), 1))
+}
+
+val airportEdges2015 = buildEdges(airlines2015)
+val airportEdgesFull = buildEdges(airlinesFull)
+
+airportEdges2015.take(1)
+airportEdgesFull.take(1)
+
+// COMMAND ----------
+
+def buildGraph(data: DataFrame): Graph[String, Long] = {
+  return Graph(
+    buildVerticies(data),
+    buildEdges(data)
+  )
+}
+
+val airportGraph2015 = buildGraph(airlines2015)
+val airportGraphFull = buildGraph(airlinesFull)
+
+airportGraphFull.cache()
 
 // COMMAND ----------
 
 def graphStats(g: Graph[String, Long]): Unit = println(s"Graph vertices: ${g.numVertices}, Graph Edges: ${g.numEdges}")
-graphStats(airportGraph)
+graphStats(airportGraphFull)
 
 // COMMAND ----------
 
-val ranks = airportGraph.pageRank(0.0001).vertices
+val ranks = airportGraphFull.pageRank(0.0001).vertices
 ranks
-  .join(airportVerticies)
+  .join(airportVerticiesFull)
   .sortBy(_._2._1, ascending=false) // sort by the rank
   .take(10) // get the top 10
   .foreach(x => println(s"Airport: ${x._2._2}\tPageRank: ${x._2._1}"))
 
 // COMMAND ----------
 
-ranks.map(_._2).sum()
+ranks
+  .join(airportVerticiesFull)
+  .map(port => (port._2._2, port._2._1))
+  .
 
 // COMMAND ----------
 
@@ -229,13 +306,28 @@ graphStats(airlineAirportsGraph)
 
 // COMMAND ----------
 
-
+:55
+df_lag = df_temp.withColumn('prev_delay', lag(df_temp['DEP_DELAY']).over(Window.partitionBy("TAIL_NUM").orderBy("FL_DATE", "DEP_TIME"))) \
+                .withColumn('prev_dep_time', lag(df_temp['DEP_TIME']).over(Window.partitionBy("TAIL_NUM").orderBy("FL_DATE", "DEP_TIME"))) \
+                .na.fill(value=0,subset=["prev_delay"])
 val airlineAirportsPageRanks = airlineAirportsGraph.pageRank(0.0001).vertices
 airlineAirportsPageRanks
   .join(airlineAirportVertices)
   .sortBy(_._2._1, ascending=false) // sort by the rank
   .take(10) // get the top 10
   .foreach(x => println(s"Airport: ${x._2._2}\tPageRank: ${x._2._1}"))
+
+// COMMAND ----------
+
+val airlineAirportsPageRanks = airlineAirportsGraph.pageRank(0.0001).vertices
+val ranked = airlineAirportsPageRanks
+  .join(airlineAirportVertices)
+  .sortBy(_._2._1, ascending=false) 
+ranked
+
+// COMMAND ----------
+
+def originDestPageRanks(df: DataFrame): 
 
 // COMMAND ----------
 
