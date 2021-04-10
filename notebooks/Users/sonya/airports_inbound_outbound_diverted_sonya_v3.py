@@ -90,7 +90,7 @@ def compute_max_median_outbound_flights_per_airport():
   sqlContext.sql("DROP TABLE IF EXISTS group25.df_median_outbound_flights_per_airport");
   sqlContext.sql("create table group25.df_median_outbound_flights_per_airport as select * from mytempTable");
 
-  display(df_median_outbound_flights_per_airport.filter(df_median_outbound_flights_per_airport.CALL_SIGN_DEP=='KORD').orderBy("fl_date", "dep_local_hour"))
+  display(df_median_outbound_flights_per_airport.filter(df_median_outbound_flights_per_airport.CALL_SIGN_DEP=='KORD').orderBy("FL_DATE", "dep_local_hour"))
 
 
   ##### max median of each airport
@@ -167,7 +167,7 @@ def compute_max_median_inbound_flights_per_airport():
   sqlContext.sql("DROP TABLE IF EXISTS group25.df_median_inbound_flights_per_airport");
   sqlContext.sql("create table group25.df_median_inbound_flights_per_airport as select * from mytempTable");
 
-  display(df_median_inbound_flights_per_airport.filter(df_median_inbound_flights_per_airport.CALL_SIGN_DEP=='KORD').orderBy("fl_date", "dep_local_hour"))
+  display(df_median_inbound_flights_per_airport.filter(df_median_inbound_flights_per_airport.CALL_SIGN_DEP=='KORD').orderBy("FL_DATE", "dep_local_hour"))
 
 
   ##### max median of each airport
@@ -216,7 +216,7 @@ def compute_normalized_outbound_flights(df_max_median_outbound_flights_per_airpo
   df1 = sqlContext.sql("""
               SELECT
                 call_sign_dep,
-                fl_date,
+                FL_DATE,
                 dep_local_hour,
                 COUNT(*) AS outbound_count
               FROM group25.airlines_utc_main
@@ -226,7 +226,7 @@ def compute_normalized_outbound_flights(df_max_median_outbound_flights_per_airpo
               ORDER BY 1, 2, 3 ASC
               """)
   # make column fl_time and ast it into timestamp
-  df1 = df1.withColumn("fl_time", unix_timestamp(col("fl_date").cast("timestamp")) + df1.dep_local_hour*60*60)
+  df1 = df1.withColumn("fl_time", unix_timestamp(col("FL_DATE").cast("timestamp")) + df1.dep_local_hour*60*60)
   df1 = df1.withColumn("fl_time", col("fl_time").cast("timestamp"))
   
 
@@ -240,7 +240,7 @@ def compute_normalized_outbound_flights(df_max_median_outbound_flights_per_airpo
   # handle columns 1-6
   total_lag_time = 6
   for i in range(1, total_lag_time+1):  
-    window = (Window.partitionBy("call_sign_dep", "fl_date").orderBy(col("fl_time").cast('long')).rangeBetween(-hours(int(i)), 0))
+    window = (Window.partitionBy("call_sign_dep", "FL_DATE").orderBy(col("fl_time").cast('long')).rangeBetween(-hours(int(i)), 0))
     df1 = df1.withColumn('outbound_count_' +str(i) + 'h', sum("outbound_count_0h").over(window))
   
   for i in range(total_lag_time, 0, -1):
@@ -365,7 +365,7 @@ def compute_normalized_inbound_flights(df_max_median_inbound_flights_per_airport
   df1 = sqlContext.sql("""
               SELECT
                 call_sign_dep,
-                fl_date,
+                FL_DATE,
                 dep_local_hour,
                 COUNT(*) AS inbound_count
               FROM group25.airlines_utc_main
@@ -375,7 +375,7 @@ def compute_normalized_inbound_flights(df_max_median_inbound_flights_per_airport
               ORDER BY 1, 2, 3 ASC
               """)
   # make column fl_time and ast it into timestamp
-  df1 = df1.withColumn("fl_time", unix_timestamp(col("fl_date").cast("timestamp")) + df1.dep_local_hour*60*60)
+  df1 = df1.withColumn("fl_time", unix_timestamp(col("FL_DATE").cast("timestamp")) + df1.dep_local_hour*60*60)
   df1 = df1.withColumn("fl_time", col("fl_time").cast("timestamp"))
   
 
@@ -389,13 +389,13 @@ def compute_normalized_inbound_flights(df_max_median_inbound_flights_per_airport
   # handle columns 1-6
   total_lag_time = 6
   for i in range(1, total_lag_time+1):  
-    window = (Window.partitionBy("call_sign_dep", "fl_date").orderBy(col("fl_time").cast('long')).rangeBetween(-hours(int(i)), 0))
+    window = (Window.partitionBy("call_sign_dep", "FL_DATE").orderBy(col("fl_time").cast('long')).rangeBetween(-hours(int(i)), 0))
     df1 = df1.withColumn('inbound_count_' +str(i) + 'h', sum("inbound_count_0h").over(window))
   
   for i in range(total_lag_time, 0, -1):
     df1 = df1.withColumn('inbound_count_' +str(i) + 'h', col('inbound_count_' +str(i) + 'h') - col('inbound_count_' +str(i-1) + 'h'))
   
-  # display(df1.filter(df1.call_sign_dep=='KORD').orderBy("fl_date", "dep_local_hour"))
+  # display(df1.filter(df1.call_sign_dep=='KORD').orderBy("FL_DATE", "dep_local_hour"))
 
   # save table
   df1.createOrReplaceTempView("mytempTable")
@@ -407,7 +407,7 @@ def compute_normalized_inbound_flights(df_max_median_inbound_flights_per_airport
   display(
     airlines_inbound_flights_main_version_time_series_rolling_counts
         .where("call_sign_dep==\'KORD\'")
-        .orderBy("fl_date", "dep_local_hour"))
+        .orderBy("FL_DATE", "dep_local_hour"))
 
 
 
@@ -422,7 +422,7 @@ def compute_normalized_inbound_flights(df_max_median_inbound_flights_per_airport
   df_normalized_inbound_flights_per_airport=df2.alias("a").join(
       df3.alias("b"), df2['call_sign_dep'] == df3['call_sign_dep']
   ).select( 'a.call_sign_dep',
-  'fl_date',
+  'FL_DATE',
   'dep_local_hour',
   'inbound_count',
   'fl_time',
@@ -520,7 +520,7 @@ def compute_normalized_diverted_outbound_flights(df_max_median_outbound_flights_
   df1 = sqlContext.sql("""
               SELECT
                 call_sign_dep,
-                fl_date,
+                FL_DATE,
                 dep_local_hour,
                 COUNT(*) AS diverted_outbound_count
               FROM group25.airlines_utc_main
@@ -531,7 +531,7 @@ def compute_normalized_diverted_outbound_flights(df_max_median_outbound_flights_
               ORDER BY 1, 2, 3 ASC
               """)
   # make column fl_time and ast it into timestamp
-  df1 = df1.withColumn("fl_time", unix_timestamp(col("fl_date").cast("timestamp")) + df1.dep_local_hour*60*60)
+  df1 = df1.withColumn("fl_time", unix_timestamp(col("FL_DATE").cast("timestamp")) + df1.dep_local_hour*60*60)
   df1 = df1.withColumn("fl_time", col("fl_time").cast("timestamp"))
   
 
@@ -545,13 +545,13 @@ def compute_normalized_diverted_outbound_flights(df_max_median_outbound_flights_
   # handle columns 1-6
   total_lag_time = 6
   for i in range(1, total_lag_time+1):  
-    window = (Window.partitionBy("call_sign_dep", "fl_date").orderBy(col("fl_time").cast('long')).rangeBetween(-hours(int(i)), 0))
+    window = (Window.partitionBy("call_sign_dep", "FL_DATE").orderBy(col("fl_time").cast('long')).rangeBetween(-hours(int(i)), 0))
     df1 = df1.withColumn('diverted_outbound_count_' +str(i) + 'h', sum("diverted_outbound_count_0h").over(window))
   
   for i in range(total_lag_time, 0, -1):
     df1 = df1.withColumn('diverted_outbound_count_' +str(i) + 'h', col('diverted_outbound_count_' +str(i) + 'h') - col('diverted_outbound_count_' +str(i-1) + 'h'))
   
-  # display(df1.filter(df1.call_sign_dep=='KORD').orderBy("fl_date", "dep_local_hour"))
+  # display(df1.filter(df1.call_sign_dep=='KORD').orderBy("FL_DATE", "dep_local_hour"))
 
   # save table
   df1.createOrReplaceTempView("mytempTable")
@@ -563,7 +563,7 @@ def compute_normalized_diverted_outbound_flights(df_max_median_outbound_flights_
   display(
     airlines_diverted_outbound_flights_main_version_time_series_rolling_counts
         .where("call_sign_dep==\'KORD\'")
-        .orderBy("fl_date", "dep_local_hour"))
+        .orderBy("FL_DATE", "dep_local_hour"))
 
 
 
@@ -577,7 +577,7 @@ def compute_normalized_diverted_outbound_flights(df_max_median_outbound_flights_
   df_normalized_diverted_outbound_flights_per_airport=df1.alias("a").join(
       df2.alias("b"), df1['call_sign_dep'] == df2['call_sign_dep']
   ).select( 'a.call_sign_dep',
-  'fl_date',
+  'FL_DATE',
   'dep_local_hour',
   'diverted_outbound_count',
   'fl_time',
@@ -598,7 +598,7 @@ def compute_normalized_diverted_outbound_flights(df_max_median_outbound_flights_
                                                   )
 
   # display(df_normalized_diverted_outbound_flights_per_airport)
-  display(df_normalized_diverted_outbound_flights_per_airport.filter(df_normalized_diverted_outbound_flights_per_airport.call_sign_dep=='KORD').orderBy("fl_date", "dep_local_hour"))
+  display(df_normalized_diverted_outbound_flights_per_airport.filter(df_normalized_diverted_outbound_flights_per_airport.call_sign_dep=='KORD').orderBy("FL_DATE", "dep_local_hour"))
   
   df_normalized_diverted_outbound_flights_per_airport.createOrReplaceTempView("mytempTable") 
   sqlContext.sql("DROP TABLE IF EXISTS group25.df_normalized_diverted_outbound_flights_per_airport");
@@ -617,7 +617,7 @@ def compute_normalized_diverted_outbound_flights(df_max_median_outbound_flights_
 #   'a.*',
 
 #   # 'b.call_sign_dep',
-#   # 'b.fl_date',
+#   # 'b.FL_DATE',
 #   # 'b.dep_local_hour',
 #   'b.diverted_outbound_count',
 #   # 'b.fl_time',
@@ -646,7 +646,7 @@ def compute_normalized_diverted_outbound_flights(df_max_median_outbound_flights_
 
 
   # # showing the median diverted_outbound flight of airport KORD
-  # display(df_median_diverted_outbound_flights_per_airport.where("call_sign_dep==\'KORD\'").orderBy("fl_date", "dep_local_hour"))
+  # display(df_median_diverted_outbound_flights_per_airport.where("call_sign_dep==\'KORD\'").orderBy("FL_DATE", "dep_local_hour"))
   return df_normalized_diverted_outbound_flights_per_airport
 
 df_normalized_diverted_outbound_flights_per_airport = compute_normalized_diverted_outbound_flights(df_max_median_outbound_flights_per_airport)
@@ -671,7 +671,7 @@ def compute_normalized_diverted_inbound_flights(df_max_median_inbound_flights_pe
   df1 = sqlContext.sql("""
               SELECT
                 call_sign_dep,
-                fl_date,
+                FL_DATE,
                 dep_local_hour,
                 COUNT(*) AS diverted_inbound_count
               FROM group25.airlines_utc_main
@@ -682,7 +682,7 @@ def compute_normalized_diverted_inbound_flights(df_max_median_inbound_flights_pe
               ORDER BY 1, 2, 3 ASC
               """)
   # make column fl_time and ast it into timestamp
-  df1 = df1.withColumn("fl_time", unix_timestamp(col("fl_date").cast("timestamp")) + df1.dep_local_hour*60*60)
+  df1 = df1.withColumn("fl_time", unix_timestamp(col("FL_DATE").cast("timestamp")) + df1.dep_local_hour*60*60)
   df1 = df1.withColumn("fl_time", col("fl_time").cast("timestamp"))
   
 
@@ -696,13 +696,13 @@ def compute_normalized_diverted_inbound_flights(df_max_median_inbound_flights_pe
   # handle columns 1-6
   total_lag_time = 6
   for i in range(1, total_lag_time+1):  
-    window = (Window.partitionBy("call_sign_dep", "fl_date").orderBy(col("fl_time").cast('long')).rangeBetween(-hours(int(i)), 0))
+    window = (Window.partitionBy("call_sign_dep", "FL_DATE").orderBy(col("fl_time").cast('long')).rangeBetween(-hours(int(i)), 0))
     df1 = df1.withColumn('diverted_inbound_count_' +str(i) + 'h', sum("diverted_inbound_count_0h").over(window))
   
   for i in range(total_lag_time, 0, -1):
     df1 = df1.withColumn('diverted_inbound_count_' +str(i) + 'h', col('diverted_inbound_count_' +str(i) + 'h') - col('diverted_inbound_count_' +str(i-1) + 'h'))
   
-  # display(df1.filter(df1.call_sign_dep=='KORD').orderBy("fl_date", "dep_local_hour"))
+  # display(df1.filter(df1.call_sign_dep=='KORD').orderBy("FL_DATE", "dep_local_hour"))
 
   # save table
   df1.createOrReplaceTempView("mytempTable")
@@ -714,7 +714,7 @@ def compute_normalized_diverted_inbound_flights(df_max_median_inbound_flights_pe
   display(
     airlines_diverted_inbound_flights_main_version_time_series_rolling_counts
         .where("call_sign_dep==\'KORD\'")
-        .orderBy("fl_date", "dep_local_hour"))
+        .orderBy("FL_DATE", "dep_local_hour"))
 
 
 
@@ -728,7 +728,7 @@ def compute_normalized_diverted_inbound_flights(df_max_median_inbound_flights_pe
   df_normalized_diverted_inbound_flights_per_airport=df1.alias("a").join(
       df2.alias("b"), df1['call_sign_dep'] == df2['call_sign_dep']
   ).select( 'a.call_sign_dep',
-  'fl_date',
+  'FL_DATE',
   'dep_local_hour',
   'diverted_inbound_count',
   'fl_time',
@@ -749,7 +749,7 @@ def compute_normalized_diverted_inbound_flights(df_max_median_inbound_flights_pe
                                                   )
 
   # display(df_normalized_diverted_inbound_flights_per_airport)
-  display(df_normalized_diverted_inbound_flights_per_airport.filter(df_normalized_diverted_inbound_flights_per_airport.call_sign_dep=='KORD').orderBy("fl_date", "dep_local_hour"))
+  display(df_normalized_diverted_inbound_flights_per_airport.filter(df_normalized_diverted_inbound_flights_per_airport.call_sign_dep=='KORD').orderBy("FL_DATE", "dep_local_hour"))
   
   df_normalized_diverted_inbound_flights_per_airport.createOrReplaceTempView("mytempTable") 
   sqlContext.sql("DROP TABLE IF EXISTS group25.df_normalized_diverted_inbound_flights_per_airport");
@@ -768,7 +768,7 @@ def compute_normalized_diverted_inbound_flights(df_max_median_inbound_flights_pe
 #   'a.*',
 
 #   # 'b.call_sign_dep',
-#   # 'b.fl_date',
+#   # 'b.FL_DATE',
 #   # 'b.dep_local_hour',
 #   'b.diverted_inbound_count',
 #   # 'b.fl_time',
@@ -797,7 +797,7 @@ def compute_normalized_diverted_inbound_flights(df_max_median_inbound_flights_pe
 
 
   # # showing the median diverted_inbound flight of airport KORD
-  # display(df_median_inbound_flights_per_airport.where("call_sign_dep==\'KORD\'").orderBy("fl_date", "dep_local_hour"))
+  # display(df_median_inbound_flights_per_airport.where("call_sign_dep==\'KORD\'").orderBy("FL_DATE", "dep_local_hour"))
   return df_normalized_diverted_inbound_flights_per_airport
 
 df_normalized_diverted_inbound_flights_per_airport = compute_normalized_diverted_inbound_flights(df_max_median_inbound_flights_per_airport)
@@ -822,7 +822,7 @@ def compute_normalized_delay_outbound_flights(df_max_median_outbound_flights_per
   df_delay_outbound_flights_per_airport_per_hour = sqlContext.sql("""
           select
             call_sign_dep,
-            fl_date,
+            FL_DATE,
             dep_local_hour,
             hour(dep_local_timestamp + INTERVAL 2 HOUR) as dep_local_hour_2h,
             sum(dep_del15) as delay_outbound_count_0h
@@ -830,21 +830,21 @@ def compute_normalized_delay_outbound_flights(df_max_median_outbound_flights_per
             where dep_del15 is not null
             group by 1,2,3,4
               """)
-  df_delay_outbound_flights_per_airport_per_hour = df_delay_outbound_flights_per_airport_per_hour.withColumn("fl_time", unix_timestamp(col("fl_date").cast("timestamp")) + df_delay_outbound_flights_per_airport_per_hour.dep_local_hour*60*60)
+  df_delay_outbound_flights_per_airport_per_hour = df_delay_outbound_flights_per_airport_per_hour.withColumn("fl_time", unix_timestamp(col("FL_DATE").cast("timestamp")) + df_delay_outbound_flights_per_airport_per_hour.dep_local_hour*60*60)
   df_delay_outbound_flights_per_airport_per_hour = df_delay_outbound_flights_per_airport_per_hour.withColumn("fl_time", col("fl_time").cast("timestamp"))
-  display(df_delay_outbound_flights_per_airport_per_hour.filter(df_delay_outbound_flights_per_airport_per_hour.call_sign_dep=='KORD').orderBy("fl_date", "dep_local_hour"))
+  display(df_delay_outbound_flights_per_airport_per_hour.filter(df_delay_outbound_flights_per_airport_per_hour.call_sign_dep=='KORD').orderBy("FL_DATE", "dep_local_hour"))
 
 
   # building the delays columns
   total_lag_time = 6
   for i in range(1, total_lag_time+1):  
-    window = (Window.partitionBy("fl_date", "call_sign_dep").orderBy(col("fl_time").cast('long')).rangeBetween(-hours(int(i)), 0))
+    window = (Window.partitionBy("FL_DATE", "call_sign_dep").orderBy(col("fl_time").cast('long')).rangeBetween(-hours(int(i)), 0))
     df_delay_outbound_flights_per_airport_per_hour = df_delay_outbound_flights_per_airport_per_hour.withColumn('delay_outbound_count_' +str(i) + 'h', sum("delay_outbound_count_0h").over(window))
 
   for i in range(total_lag_time, 0, -1):
     df_delay_outbound_flights_per_airport_per_hour = df_delay_outbound_flights_per_airport_per_hour.withColumn('delay_outbound_count_' +str(i) + 'h', col('delay_outbound_count_' +str(i) + 'h') - col('delay_outbound_count_' +str(i-1) + 'h'))
 
-  display(df_delay_outbound_flights_per_airport_per_hour.filter(df_delay_outbound_flights_per_airport_per_hour.call_sign_dep=='KORD').orderBy("fl_date", "dep_local_hour"))
+  display(df_delay_outbound_flights_per_airport_per_hour.filter(df_delay_outbound_flights_per_airport_per_hour.call_sign_dep=='KORD').orderBy("FL_DATE", "dep_local_hour"))
 
   df_delay_outbound_flights_per_airport_per_hour.createOrReplaceTempView("mytempTable") 
   sqlContext.sql("DROP TABLE IF EXISTS group25.df_delayed_outbound_flights_per_airport_per_hour_rolling_window");
@@ -858,7 +858,7 @@ def compute_normalized_delay_outbound_flights(df_max_median_outbound_flights_per
   df_normalized_delay_outbound_flights_per_airport=df_delay_outbound_flights_per_airport_per_hour.alias("a").join(
       df2.alias("b"), df_delay_outbound_flights_per_airport_per_hour['call_sign_dep'] == df2['call_sign_dep']
   ).select( 'a.call_sign_dep',
-  'fl_date',
+  'FL_DATE',
   'dep_local_hour',
   #  'dep_local_hour_2h',
   'fl_time',
@@ -902,7 +902,7 @@ def compute_normalized_delay_outbound_flights(df_max_median_outbound_flights_per
 #   # df_left has no fl_datetime. It only has FL_DATE. 
 
 #   # 'b.call_sign_dep',
-#   # 'b.fl_date',
+#   # 'b.FL_DATE',
 #   # 'b.dep_local_hour',
 #   # 'b.delay_outbound_count',
 #   # 'b.fl_time',
@@ -956,7 +956,7 @@ def compute_normalized_delay_inbound_flights(df_max_median_inbound_flights_per_a
   df_delay_inbound_flights_per_airport_per_hour = sqlContext.sql("""
           select
             call_sign_dep,
-            fl_date,
+            FL_DATE,
             dep_local_hour,
             hour(dep_local_timestamp + INTERVAL 2 HOUR) as dep_local_hour_2h,
             sum(dep_del15) as delay_inbound_count_0h
@@ -964,21 +964,21 @@ def compute_normalized_delay_inbound_flights(df_max_median_inbound_flights_per_a
             where dep_del15 is not null
             group by 1,2,3,4
               """)
-  df_delay_inbound_flights_per_airport_per_hour = df_delay_inbound_flights_per_airport_per_hour.withColumn("fl_time", unix_timestamp(col("fl_date").cast("timestamp")) + df_delay_inbound_flights_per_airport_per_hour.dep_local_hour*60*60)
+  df_delay_inbound_flights_per_airport_per_hour = df_delay_inbound_flights_per_airport_per_hour.withColumn("fl_time", unix_timestamp(col("FL_DATE").cast("timestamp")) + df_delay_inbound_flights_per_airport_per_hour.dep_local_hour*60*60)
   df_delay_inbound_flights_per_airport_per_hour = df_delay_inbound_flights_per_airport_per_hour.withColumn("fl_time", col("fl_time").cast("timestamp"))
-  display(df_delay_inbound_flights_per_airport_per_hour.filter(df_delay_inbound_flights_per_airport_per_hour.call_sign_dep=='KORD').orderBy("fl_date", "dep_local_hour"))
+  display(df_delay_inbound_flights_per_airport_per_hour.filter(df_delay_inbound_flights_per_airport_per_hour.call_sign_dep=='KORD').orderBy("FL_DATE", "dep_local_hour"))
 
 
   # building the delays columns
   total_lag_time = 6
   for i in range(1, total_lag_time+1):  
-    window = (Window.partitionBy("fl_date", "call_sign_dep").orderBy(col("fl_time").cast('long')).rangeBetween(-hours(int(i)), 0))
+    window = (Window.partitionBy("FL_DATE", "call_sign_dep").orderBy(col("fl_time").cast('long')).rangeBetween(-hours(int(i)), 0))
     df_delay_inbound_flights_per_airport_per_hour = df_delay_inbound_flights_per_airport_per_hour.withColumn('delay_inbound_count_' +str(i) + 'h', sum("delay_inbound_count_0h").over(window))
 
   for i in range(total_lag_time, 0, -1):
     df_delay_inbound_flights_per_airport_per_hour = df_delay_inbound_flights_per_airport_per_hour.withColumn('delay_inbound_count_' +str(i) + 'h', col('delay_inbound_count_' +str(i) + 'h') - col('delay_inbound_count_' +str(i-1) + 'h'))
 
-  display(df_delay_inbound_flights_per_airport_per_hour.filter(df_delay_inbound_flights_per_airport_per_hour.call_sign_dep=='KORD').orderBy("fl_date", "dep_local_hour"))
+  display(df_delay_inbound_flights_per_airport_per_hour.filter(df_delay_inbound_flights_per_airport_per_hour.call_sign_dep=='KORD').orderBy("FL_DATE", "dep_local_hour"))
 
   df_delay_inbound_flights_per_airport_per_hour.createOrReplaceTempView("mytempTable") 
   sqlContext.sql("DROP TABLE IF EXISTS group25.df_delayed_inbound_flights_per_airport_per_hour_rolling_window");
@@ -992,7 +992,7 @@ def compute_normalized_delay_inbound_flights(df_max_median_inbound_flights_per_a
   df_normalized_delay_inbound_flights_per_airport=df_delay_inbound_flights_per_airport_per_hour.alias("a").join(
       df2.alias("b"), df_delay_inbound_flights_per_airport_per_hour['call_sign_dep'] == df2['call_sign_dep']
   ).select( 'a.call_sign_dep',
-  'fl_date',
+  'FL_DATE',
   'dep_local_hour',
   #  'dep_local_hour_2h',
   'fl_time',
@@ -1148,7 +1148,7 @@ sqlContext.sql("create table group25.baseline_model_data as select * from mytemp
 def join_tables(airlines_utc_main, normalized_outbound):
   baseline_model_data = airlines_utc_main.join(
     normalized_outbound, 
-    ["FL_DATE", "DEP_LOCAL_HOUR"],
+    ON=["FL_DATE", "DEP_LOCAL_HOUR"],
     how='left')
   return baseline_model_data
 
