@@ -754,13 +754,12 @@ def insertIntoTable(input):
     INSERT INTO group25.experiment_results
     VALUES (CURRENT_TIMESTAMP(), '{}', '{}')
   """.format(input, notebook_name))
-
-insertIntoTable('myresults2')
   
 
 # COMMAND ----------
 
 import ast
+
 def checkIfRecordExists(model_name, hyperparameters, sampling_method):
   df_exp_results = sqlContext.sql("""
     SELECT * FROM group25.experiment_results
@@ -787,39 +786,29 @@ def checkIfRecordExists(model_name, hyperparameters, sampling_method):
     '\"elasticNetParam\"': '\\"elasticNetParam\\"', 
     '\"threshold\"': '\\"threshold\\"'
   }
-  print(df_exp_results_pandas)
+
+  res_list = []
   for item in df_exp_results_pandas.Results.values:
-    
-    rem = item
-    while rem is not None
-    for delim in delimiters.reverse():
-      part0 = item.split(delim)
-      part1 = part0[0].split()
-      print(item.split())
-    for k,v in replace_dict.items():      
-      item = item.replace(k, v)
-    print(item)
-    print(json.loads(item))
-#     part1 = item.split("'Model':")
-#     print(ast.literal_eval(item))
-#     if len(part1) > 1:
-#       part2 = part1[1].split(",'HyperParameter':")
-#       model_name = [v for k,v in ast.literal_eval(part2[0]).items()][0]
-#       print(model_name)
-#       print(part2)
-#       part3 = part2[1].split(",'Sampling':")
-#       print(part3)
-#       hyperparameters_table = ast.literal_eval(part3[0]) #[v for k,v in ast.literal_eval(part3[0]).items()][0] 
-#       print(hyperparameters_table)
+    try:
+      part0 = item.split("\"Prefix\":")
+      prefix = [v for k,v in json.loads(str(part0[1]).replace("}}","}")).items()][0]
+      if prefix == 'Val':
+        if model_name in part0[0]:
+            res_list.append(item)
+    except:
+      continue
+      
+  return pd.DataFrame({'Results':res_list})
 
 hyperparameters = {'eta': '0.001', 'maxDepth': '8'}
-checkIfRecordExists('LogisticRegression', hyperparameters , 'BootStrapping')
+res = checkIfRecordExists('DecisionTrees', hyperparameters , 'BootStrapping')
+display(res)
 
 # COMMAND ----------
 
 # MAGIC %sql
 # MAGIC 
-# MAGIC SELECT * FROM group25.experiment_results
+# MAGIC SELECT COUNT(*) FROM group25.experiment_results
 
 # COMMAND ----------
 
@@ -917,7 +906,7 @@ for regParam in regParams:
           collectSubModels=True,
           numFolds=numFolds).fit(preppedDataDF_train[sampling_method])
       
-      
+      # Select the best threshold
       fMeasure =lrModel.bestModel.stages[0].summary.fMeasureByThreshold
       maxFMeasure = fMeasure.groupBy().max('F-Measure').select('max(F-Measure)').head()
       bestThreshold = fMeasure.where(fMeasure['F-Measure'] == maxFMeasure['max(F-Measure)']) \
@@ -943,14 +932,6 @@ for regParam in regParams:
 print(best_model)
 display(df_model_results)
 
-
-# COMMAND ----------
-
-display(lrModel.subModels[1][0].stages[0].summary.recallByThreshold)
-
-# COMMAND ----------
-
-df_model_results.loc[df_model_results.Prefix=='Val',:].sort_values(by=['Prefix','F1-score'], ascending = False)
 
 # COMMAND ----------
 
@@ -1247,10 +1228,6 @@ display(df_model_gbt_results)
 
 # COMMAND ----------
 
-df_model_gbt_results.loc[df_model_gbt_results.Prefix=='Val',:].sort_values(by=['Prefix','F1-score'], ascending = False)
-
-# COMMAND ----------
-
 # MAGIC %md
 # MAGIC 
 # MAGIC #### Extreme Gradient Boosting
@@ -1259,7 +1236,7 @@ df_model_gbt_results.loc[df_model_gbt_results.Prefix=='Val',:].sort_values(by=['
 
 # eXtreme Gradient Boosting
 etas = [1e-1, 1e-2, 1e-3]
-depths = [2, 4, 8]
+depths = [4, 8, 12]
 model_name = 'eXtremeGradientBoostedTrees'
 numFolds = 5
 df_model_xgb_results = pd.DataFrame()
@@ -1337,4 +1314,7 @@ display(df_model_xgb_results)
 
 # MAGIC %md
 # MAGIC 
-# MAGIC #### Error Analysis
+# MAGIC #### Test Dataset Evaluation
+
+# COMMAND ----------
+
