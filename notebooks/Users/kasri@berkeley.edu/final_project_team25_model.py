@@ -520,11 +520,11 @@ scalers = [RobustScaler(inputCol=col + "_vec", outputCol=col + "_scaled") for co
 
 column_names = all_columns + ['classWeights']
 scalerModel = {}
-sampling_methods = ['ClassWeighted'] #['BootStrapping', 'NoOversampling', 'ClassWeighted']
+sampling_methods = ['BootStrapping', 'NoOversampling', 'ClassWeighted']
 
 train_data = {}
-# train_data['BootStrapping'] = df_train_oversampled.select(*column_names)
-# train_data['NoOversampling'] = df_train.select(*column_names)
+train_data['BootStrapping'] = df_train_oversampled.select(*column_names)
+train_data['NoOversampling'] = df_train.select(*column_names)
 train_data['ClassWeighted'] = df_train.select(*column_names)
 
 for sampling_type in sampling_methods:
@@ -580,17 +580,17 @@ sampling_methods = ['ClassWeighted']
 
 for sampling_type in sampling_methods:
   df_train_scaled[sampling_type] = scalerModel[sampling_type].transform(train_data[sampling_type])
-#   df_val_scaled[sampling_type]  = scalerModel[sampling_type].transform(df_val.select(*column_names))
+  df_val_scaled[sampling_type]  = scalerModel[sampling_type].transform(df_val.select(*column_names))
   df_test_scaled[sampling_type]  = scalerModel[sampling_type].transform(df_test.select(*column_names))
   
   partialPipeline = Pipeline().setStages(stages)
   pipelineModel_train[sampling_type] = partialPipeline.fit(df_train_scaled[sampling_type])
   preppedDataDF_train[sampling_type] = pipelineModel_train[sampling_type].transform(df_train_scaled[sampling_type]).cache()
-#   preppedDataDF_val[sampling_type] = pipelineModel_train[sampling_type].transform(df_val_scaled[sampling_type]).cache()
+  preppedDataDF_val[sampling_type] = pipelineModel_train[sampling_type].transform(df_val_scaled[sampling_type]).cache()
   preppedDataDF_test[sampling_type] = pipelineModel_train[sampling_type].transform(df_test_scaled[sampling_type]).cache()
 
   print('Number of training samples in {}: {}'.format(sampling_type, preppedDataDF_train[sampling_type].count()))
-#   print('Number of validation samples in {}: {}'.format(sampling_type, preppedDataDF_val[sampling_type].count()))
+  print('Number of validation samples in {}: {}'.format(sampling_type, preppedDataDF_val[sampling_type].count()))
   print('Number of test samples in {}: {}'.format(sampling_type, preppedDataDF_test[sampling_type].count()))
 
 # COMMAND ----------
@@ -598,15 +598,15 @@ for sampling_type in sampling_methods:
 # write prepped dataframes to tables
 sampling_methods = ['ClassWeighted']
 for sampling_type in sampling_methods:  
-#   preppedDataDF_train[sampling_type].createOrReplaceTempView("mytempTable")
-#   table_name = 'group25.data_train_main_prepped_' + sampling_type
-#   sqlContext.sql("DROP TABLE IF EXISTS {}".format(table_name));
-#   sqlContext.sql("create table {} as select * from mytempTable".format(table_name));
+  preppedDataDF_train[sampling_type].createOrReplaceTempView("mytempTable")
+  table_name = 'group25.data_train_main_prepped_' + sampling_type
+  sqlContext.sql("DROP TABLE IF EXISTS {}".format(table_name));
+  sqlContext.sql("create table {} as select * from mytempTable".format(table_name));
 
-#   table_name = 'group25.data_val_main_prepped_' + sampling_type
-#   preppedDataDF_val[sampling_type].createOrReplaceTempView("mytempTable") 
-#   sqlContext.sql("DROP TABLE IF EXISTS {}".format(table_name));
-#   sqlContext.sql("create table {} as select * from mytempTable".format(table_name));
+  table_name = 'group25.data_val_main_prepped_' + sampling_type
+  preppedDataDF_val[sampling_type].createOrReplaceTempView("mytempTable") 
+  sqlContext.sql("DROP TABLE IF EXISTS {}".format(table_name));
+  sqlContext.sql("create table {} as select * from mytempTable".format(table_name));
 
   table_name = 'group25.data_test_main_prepped_' + sampling_type  
   preppedDataDF_test[sampling_type].createOrReplaceTempView("mytempTable") 
@@ -785,9 +785,6 @@ def getErrorPlots(predictions, columns):
   # Set figsize here
   fig, axes = plt.subplots(nrows=np.int(nrows), ncols=ncols, figsize=(24,48))
 
-  # if you didn't set the figsize above you can do the following
-  # fig.set_size_inches(12, 5)
-
   # flatten axes for easy iterating
   for i, ax in enumerate(axes.flatten()):
     if i < num_plots:
@@ -887,8 +884,6 @@ for regParam in regParams:
 # MAGIC Here, we plot the confusion matrix for the results of the logistic regression.
 
 # COMMAND ----------
-
-
 
 predictions = best_model['model'].transform(dataset['Val'])
 y_test = list(predictions.select("label").toPandas()['label'].astype(int))
@@ -1206,6 +1201,14 @@ for sampling_method in sampling_methods:
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC 
+# MAGIC #### Evaluate Best Model on Test
+# MAGIC 
+# MAGIC Evaluating the xgBoost model on the hold out test set.
+
+# COMMAND ----------
+
 # Test on 2019 dataset
 iteration=0
 xgb_threshold = 0.632 # based on val data
@@ -1227,6 +1230,7 @@ plt.show()
 
 # COMMAND ----------
 
+# Compute Pr, Rec and F measure on the test predictions
 pr = precision_score(y_test, y_pred)
 rec = recall_score(y_test, y_pred)
 f_0p5 = (1+0.25)*pr*rec/(0.25*pr + rec)
@@ -1237,46 +1241,14 @@ print(pr, rec, f_0p5)
 featureScoreMap_gain = xgbModel.bestModel.stages[0].nativeBooster.getScore("", "gain")
 sortedScoreMap = featureScoreMap_gain.entries
 names = sortedScoreMap
-# println(sortedScoreMap)
-# // featureScoreMap = xgbModel.bestModel.stages[0].nativeBooster.getScore("","gain")
-# // # sortedScoreMap = featureScoreMap.toSeq
-# // # sortedScoreMap.name
-# // for item in featureScoreMap.toSeq:
-# //   item
 print(sortedScoreMap)
-
-# COMMAND ----------
-
-importances = xgbModel.bestModel.stages[0].booster.getFeatureScore()
-df_importance = ExtractFeatureImp(importances, preppedDataDF_train[sampling_method], "features")
-
-var_name = []
-for features in df_importance.name.values[:]:
-  if len(features.split('classVec')) > 1:
-    var_name.append(features.split('classVec')[0])
-  elif len(features.split('_IMPUTE')) > 1:
-    var_name.append(features.split('_IMPUTE')[0])
-  else:
-    var_name.append(features)
-    print('Did not split variable {}'.format(features))
-df_importance.name = var_name
-df_importance.head(50)
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC 
-# MAGIC #### Test Dataset Evaluation
-# MAGIC 
-# MAGIC We use the eXtreme gradient boosted model to evaluate the test set.
+# MAGIC #### List of all results
 
 # COMMAND ----------
 
-
-
-# COMMAND ----------
-
-display(sqlContext.sql(""" select * from group25.experiment_results_new and Prefix = 'Val' order by pr_AUC desc, f0p5_score desc"""))
-
-# COMMAND ----------
-
+display(sqlContext.sql(""" select * from group25.experiment_results_new where Prefix = 'Val' order by pr_AUC desc, f0p5_score desc"""))
