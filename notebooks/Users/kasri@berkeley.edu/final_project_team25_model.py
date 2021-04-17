@@ -43,7 +43,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import datetime
 from functools import reduce
-from sklearn.metrics import accuracy_score, precision_score, recall_score, roc_auc_score, f1_score
+from sklearn.metrics import accuracy_score, precision_score, recall_score, roc_auc_score, f1_score, precision_recall_curve
 from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
 from dtreeviz.models.spark_decision_tree import ShadowSparkTree
 from dtreeviz import trees
@@ -321,7 +321,7 @@ df_test_all = df_test_all.select(*all_columns)
 
 NUM_TRAIN_SAMPLES = 5000000
 NUM_VAL_SAMPLES = 500000
-NUM_TEST_SAMPLES = 500000
+NUM_TEST_SAMPLES = 5000000
 
 df_train = df_train_all.sample(NUM_TRAIN_SAMPLES/df_train_all.count(), 123)
 df_train = df_train.withColumn("DEP_DEL15",df_train.DEP_DEL15.cast("int"))
@@ -353,7 +353,7 @@ airports[:5]
 # MAGIC 
 # MAGIC #### Minority Oversampling: Construct Balanced Data for Train
 # MAGIC 
-# MAGIC The training data is heavily imbalanced. Flights with delay only constitute \\( \approx 20\% \\) of the flights. This results in the model being biased towards predicting "No Delay" more often. We seek to remedy this situation by oversampling the minority class, in this case the "No Delay" class. the simplest oversampling mechanism is to resample from the minority class until the classes have been balanced. In this work, we do this by simply duplicating the minority class 4 fold.
+# MAGIC The training data is heavily imbalanced. Flights with delay only constitute \\( \approx 17.9\% \\) of the flights. This results in the model being biased towards predicting "No Delay" more often. We seek to remedy this situation by oversampling the minority class, in this case the "No Delay" class. the simplest oversampling mechanism is to resample from the minority class until the classes have been balanced. In this work, we do this by simply duplicating the minority class 4 fold.
 
 # COMMAND ----------
 
@@ -576,6 +576,7 @@ preppedDataDF_train = {}
 preppedDataDF_val = {}
 preppedDataDF_test = {}
 
+sampling_methods = ['ClassWeighted']
 
 for sampling_type in sampling_methods:
   df_train_scaled[sampling_type] = scalerModel[sampling_type].transform(train_data[sampling_type])
@@ -595,7 +596,7 @@ for sampling_type in sampling_methods:
 # COMMAND ----------
 
 # write prepped dataframes to tables
-
+sampling_methods = ['ClassWeighted']
 for sampling_type in sampling_methods:  
   preppedDataDF_train[sampling_type].createOrReplaceTempView("mytempTable")
   table_name = 'group25.data_train_main_prepped_' + sampling_type
@@ -651,7 +652,8 @@ for sampling_type in sampling_methods:
 # MAGIC %md
 # MAGIC #### Metrics
 # MAGIC 
-# MAGIC We implement the F-beta measure to evaluate the performance of the model. In the formula below, \\( \beta >1 \\) results in a score that weights more on recall while a \\( \beta < 1 \\) weights precision more. The end business use case dictates the best measure to be used. In this work, we report F1, F_0.5 and F2 scores for comparing various models. 
+# MAGIC We implement the F-beta measure to evaluate the performance of the model. In the formula below, \\( \beta >1 \\) results in a score that weights more on recall while a \\( \beta < 1 \\) weights precision more. The end business use case dictates the best measure to be used. In this work, we report \\( F_{0.5} \\),  \\( F_1 \\) and \\( F_2 \\) scores for comparing various models. 
+# MAGIC 
 # MAGIC 
 # MAGIC $$F_{\beta} = (1+\beta^2)* \frac{Pr\cdot Rec}{\beta^2 \cdot Pr + Rec}$$
 # MAGIC 
@@ -659,8 +661,6 @@ for sampling_type in sampling_methods:
 
 # COMMAND ----------
 
-import time
-sleep_time = 0
 def getFMeasures(pr, rec, beta):
   beta_sq = beta*beta
   if beta_sq*pr+rec > 1e-16:
@@ -685,144 +685,105 @@ def assessModelPerformance(model, data, prefix):
   # Area under ROC curve
   print("Area under {}ROC  = {}".format(prefix, round(metrics.areaUnderROC,3)))
 
-  predictionAndTarget = predictions.select("label", "prediction")
+  predictionAndTarget = predictions[["label", "probability"]].rdd.map(lambda x: (x[0], x[1][1]))
   predictionAndTargetNumpy = np.array((predictionAndTarget.collect()))
-  
-  # Calculate Precision and Recall
-  precision = precision_score(predictionAndTargetNumpy[:,0], predictionAndTargetNumpy[:,1])
-  recall = recall_score(predictionAndTargetNumpy[:,0], predictionAndTargetNumpy[:,1])
+  precision_data, recall_data, thresholds = precision_recall_curve(predictionAndTargetNumpy[:,0], predictionAndTargetNumpy[:,1])
 
-  #Compute AUC
-  auc = roc_auc_score(predictionAndTargetNumpy[:,0], predictionAndTargetNumpy[:,1])
-
-  # Compute evaluation metrics
-  acc = accuracy_score(predictionAndTargetNumpy[:,0], predictionAndTargetNumpy[:,1])
-  f1 = f1_score(predictionAndTargetNumpy[:,0], predictionAndTargetNumpy[:,1])
-  f_0p5 = getFMeasures(precision, recall, 0.5)
-  f_2p0 = getFMeasures(precision, recall, 2.0)
+  f1_scores = []
+  f0p5_scores = []
+  f2_scores = []
   
-  print('{}Accuracy: {}\n{}F1-Score: {}\n{}F0.5-Score: {}\n{}F2-Score: {}\n{}Precision: {}\n{}Recall: {}\n{}AUC: {}'.format(prefix, round(acc,3), 
-                                                                                                                            prefix, round(f1,3), 
-                                                                                                                            prefix, round(f_0p5,3), 
-                                                                                                                            prefix,round(f_2p0,3), 
-                                                                                                                            prefix,round(precision,3), 
-                                                                                                                            prefix, round(recall,3), 
-                                                                                                                            prefix, round(auc,3)))
-  return (acc, f1, precision, recall, auc, f_0p5, f_2p0)
+  for index, thr in enumerate(thresholds):
+    f1_scores.append(getFMeasures(precision_data[index], recall_data[index], 1.0))
+    f0p5_scores.append(getFMeasures(precision_data[index], recall_data[index], 0.5))
+    f2_scores.append(getFMeasures(precision_data[index], recall_data[index], 2.0))
+    
+  # Find threshold for each metric
+  index_f0p5 = int(np.argmax(np.array(f0p5_scores)))
+  index_f1 = int(np.argmax(np.array(f1_scores)))
+  index_f2 = int(np.argmax(np.array(f2_scores)))
+  
+  best_metrics = {
+    'f2_score' : str(round(f2_scores[index_f2],3)), 
+    'f2_threshold': str(round(thresholds[index_f2],3)),
+    'f0p5_score' : str(round(f0p5_scores[index_f0p5],3)), 
+    'f0p5_threshold': str(round(thresholds[index_f0p5],3)),
+    'f1_score' : str(round(f1_scores[index_f1],3)), 
+    'f1_threshold': str(round(thresholds[index_f1],3)),
+    'pr-auc': str(round(metrics.areaUnderPR,3)),
+    'roc-auc': str(round(metrics.areaUnderROC,3))
+  }
+  
+  return (best_metrics)
 
 def runAssessments(model, data_prefix, dataset, iteration, hyperparameters, sampling_type, model_name):
     print('-----------------' + data_prefix + '--------------------')
 
     print('Starting model assessment...')
-    acc, f1, precision, recall, auc, f_0p5, f_2p0 = assessModelPerformance(model, dataset, data_prefix)
+    best_metrics = assessModelPerformance(model, dataset, data_prefix)
     print('Finished model assessment...')
 
-    results = {
-      'Model': model_name,
-      'HyperParameter': hyperparameters,
-      'Sampling': sampling_type,
-      'Accuracy': round(acc,3), 
-      'F1-score': round(f1,3), 
-      'Precision': round(precision,3), 
-      'Recall': round(recall,3), 
-      'AUC': round(auc,3), 
-      'F0.5-score': round(f_0p5,3), 
-      'F2-score': round(f_2p0,3),
-      'Prefix': data_prefix
-    }
-    print(results)
-    df_temp = pd.DataFrame(results, index = [iteration])
+    results = {}
+    for k,v in best_metrics.items():
+      results[k] = v
+      
+    results['Model'] = model_name
+    results['HyperParameter'] = hyperparameters  
+    results['Sampling'] = sampling_type
+    results['Prefix'] = data_prefix 
 
+    print(results)
     print('---------------------------------------------------')
 
       
-    return df_temp
+    return results
 
 # COMMAND ----------
 
 def insertIntoTable(input):
   notebook_name = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
   sqlContext.sql("""
-    CREATE TABLE IF NOT EXISTS group25.experiment_results (
+    CREATE TABLE IF NOT EXISTS group25.experiment_results_new (
       RecordTimeStamp timestamp,
-      Results varchar(10000),
+      f2_score varchar(20), 
+      f2_threshold varchar(20),
+      f0p5_score varchar(20),
+      f0p5_threshold varchar(20),
+      f1_score varchar(20),
+      f1_threshold varchar(20),
+      pr_AUC varchar(20),
+      roc_AUC varchar(20),
+      Model varchar(50),
+      HyperParameter varchar(1000),  
+      Sampling varchar(50),
+      Prefix varchar(20),
       Notebook varchar(1000)
       )
   """);
   
-  sqlContext.sql("""
-    INSERT INTO group25.experiment_results
-    VALUES (CURRENT_TIMESTAMP(), '{}', '{}')
-  """.format(input, notebook_name))
+  string_value = ''
+  for k, v in input.items():
+    string_value += "\'" + v + "\',"
+    
+  sqlString = """
+     INSERT INTO group25.experiment_results_new
+     VALUES (CURRENT_TIMESTAMP(), {0},'{1}')
+  """.format(string_value[:-1], notebook_name)
   
-
-# COMMAND ----------
-
-import ast
-
-def checkIfRecordExists(model_name, hyperparameters, sampling_method):
-  df_exp_results = sqlContext.sql("""
-    SELECT * FROM group25.experiment_results
-  """)
-  
-  df_exp_results_pandas = df_exp_results.toPandas()
-
-  delimiters = ["\"Model\":",
-                "\"HyperParameter\":",
-                "\"Sampling\":", 
-                "\"Accuracy\":", 
-                "\"F1-score\":", 
-                "\"Precision\":", 
-                "\"Recall\":", 
-                "\"AUC\":", 
-                "\"F0.5-score\":", 
-                "\"F2-score\":", 
-                "\"Prefix\":"]
-  
-  replace_dict = {
-    '\"maxDepth\"': '\\"maxDepth\\"',
-    '\"eta\"': '\\"eta\\"',
-    '\"regParam\"': '\\"regParam\\"',
-    '\"elasticNetParam\"': '\\"elasticNetParam\\"', 
-    '\"threshold\"': '\\"threshold\\"'
-  }
-
-  res_list = []
-  for item in df_exp_results_pandas.Results.values:
-    try:
-      part0 = item.split("\"Prefix\":")
-      prefix = [v for k,v in json.loads(str(part0[1]).replace("}}","}")).items()][0]
-      if prefix == 'Val':
-        if model_name in part0[0]:
-            res_list.append(item)
-    except:
-      continue
-      
-  return pd.DataFrame({'Results':res_list})
-
-hyperparameters = {'eta': '0.001', 'maxDepth': '8'}
-res = checkIfRecordExists('DecisionTrees', hyperparameters , 'BootStrapping')
-display(res)
-
-# COMMAND ----------
-
-# MAGIC %sql
-# MAGIC 
-# MAGIC SELECT COUNT(*) FROM group25.experiment_results
+  sqlContext.sql(sqlString)
 
 # COMMAND ----------
 
 def getErrorPlots(predictions, columns):
-  predictions = predictions.withColumn("Error", abs(predictions.label - predictions.prediction).cast("string"))
+  
+  tmp = [str(abs(row['label'] - row['prediction'])) for index, rows in predictions.iterrows()]
+  predictions.loc[:,"Error"] = tmp
   num_plots = len(columns)
   ncols = 3
   nrows = np.ceil(num_plots/ncols)
 
   # Set figsize here
   fig, axes = plt.subplots(nrows=np.int(nrows), ncols=ncols, figsize=(24,48))
-
-  # if you didn't set the figsize above you can do the following
-  # fig.set_size_inches(12, 5)
 
   # flatten axes for easy iterating
   for i, ax in enumerate(axes.flatten()):
@@ -834,7 +795,8 @@ def getErrorPlots(predictions, columns):
         col_name = column.split('_IMPUTE')[0]
       else:
         col_name = column
-      g = sns.boxplot(y=column, x="Error",  data=df_airlines_pandas, showfliers = False, ax=ax)
+      print(column)
+      g = sns.boxplot(y=column, x="Error",  data=predictions, showfliers = False, ax=ax)
       g.set(ylim=(None, None))
       ax.set_title('{} vs Prediction Errors'.format(col_name))
       ax.set_ylabel('')
@@ -864,11 +826,11 @@ numFolds = 10
 
 df_model_results = pd.DataFrame()
 iteration = 0
-
+sampling_methods = ['ClassWeighted']#, 'BootStrapping', 'NoOversampling']
 best_model = {}
 for regParam in regParams:
   for elasticNetParam in elasticNetParams:
-    for sampling_method in ['BootStrapping']: #['ClassWeighted']: #sampling_methods:
+    for sampling_method in sampling_methods: #['ClassWeighted']: #sampling_methods:
       lrModel = None
       
       dataset = {'Train': preppedDataDF_train[sampling_method], 'Val': preppedDataDF_val[sampling_method]}
@@ -906,32 +868,12 @@ for regParam in regParams:
           collectSubModels=True,
           numFolds=numFolds).fit(preppedDataDF_train[sampling_method])
       
-      # Select the best threshold
-      fMeasure =lrModel.bestModel.stages[0].summary.fMeasureByThreshold
-      maxFMeasure = fMeasure.groupBy().max('F-Measure').select('max(F-Measure)').head()
-      bestThreshold = fMeasure.where(fMeasure['F-Measure'] == maxFMeasure['max(F-Measure)']) \
-                              .select('threshold').head()['threshold']
-      lrModel.bestModel.stages[0].setThreshold(bestThreshold)
-      
       prefixes = ['Train', 'Val']
       for data_prefix in prefixes:
         hyperparameters = json.dumps({'regParam':str(regParam), 'elasticNetParam': str(elasticNetParam), 'threshold': bestThreshold})
-        df_temp = runAssessments(lrModel, data_prefix, dataset[data_prefix], iteration, hyperparameters, sampling_method)
-        df_model_results = df_model_results.append(df_temp)
+        output = runAssessments(lrModel, data_prefix, dataset[data_prefix], iteration, hyperparameters, sampling_method)
 
         print('---------------------------------------------------')
-
-        iteration += 1
-        if data_prefix == 'Val':
-          if not best_model:
-            best_model = {'val_f1_score': df_temp[['F1-score']].values[0], 'model': lrModel, 'data': df_temp}
-          else:
-            if best_model['val_f1_score'] < df_temp[['F1-score']].values[0]:
-              best_model = {'val_f1_score': df_temp[['F1-score']].values[0], 'model': lrModel, 'data': df_temp}
-
-print(best_model)
-display(df_model_results)
-
 
 # COMMAND ----------
 
@@ -942,8 +884,6 @@ display(df_model_results)
 # MAGIC Here, we plot the confusion matrix for the results of the logistic regression.
 
 # COMMAND ----------
-
-
 
 predictions = best_model['model'].transform(dataset['Val'])
 y_test = list(predictions.select("label").toPandas()['label'].astype(int))
@@ -975,10 +915,10 @@ numFolds = 10
 df_model_dt_results = pd.DataFrame()
 iteration = 0
 depths = [5,10]
-
+sampling_methods = ['ClassWeighted']#, 'BootStrapping', 'NoOversampling']
 best_model = {}
 for depth in depths:
-  for sampling_method in ['BootStrapping']: #['ClassWeighted']: #sampling_methods:
+  for sampling_method in sampling_methods: #['BootStrapping']: #['ClassWeighted']: #sampling_methods:
     dtModel = None
 
     dataset = {'Train': preppedDataDF_train[sampling_method], 'Val': preppedDataDF_val[sampling_method]}
@@ -1043,24 +983,19 @@ dtModel._call_java('rootNode').toString()
 
 # COMMAND ----------
 
-
-# spark_dtree = ShadowSparkTree(dtModel, predictions['features'], predictions['prediction'], feature_names='features', target_name='prediction', class_names=[0, 1])
-# trees.dtreeviz(spark_dtree, fancy=True)
-
-# COMMAND ----------
-
 # MAGIC %md
 # MAGIC #### Random Forest
 
 # COMMAND ----------
 
-tree_list = [100, 500, 1000]
-max_depth_list = [3, 4, 5]
+tree_list = [500] #[100, 500, 1000]
+max_depth_list = [3] #[3, 4, 5]
 model_name = 'RandomForest'
 best_rf_model = {}
 df_model_rf_results = pd.DataFrame()
 iteration = 0
 evaluator = BinaryClassificationEvaluator(metricName="areaUnderPR")
+sampling_methods = ['ClassWeighted']#, 'BootStrapping', 'NoOversampling']
 
 for trees in tree_list:
   for depth in max_depth_list:
@@ -1104,26 +1039,12 @@ for trees in tree_list:
       prefixes = ['Train', 'Val']
       for data_prefix in prefixes:
         hyperparameters = json.dumps({'numTrees':str(trees), 'maxDepth': str(depth)})
-        df_temp = runAssessments(rfModel, data_prefix, dataset[data_prefix], iteration, hyperparameters, sampling_method)
-        df_model_rf_results = df_model_rf_results.append(df_temp)
+        output = runAssessments(rfModel, data_prefix, dataset[data_prefix], iteration, hyperparameters, sampling_method, model_name)
 
-        print('---------------------------------------------------')
-
-        iteration += 1
-        if data_prefix == 'Val':
-          if not best_rf_model:
-            best_rf_model = {'val_f1_score': df_temp[['F1-score']].values[0], 'model': rfModel, 'data': df_temp}
-          else:
-            if best_rf_model['val_f1_score'] < df_temp[['F1-score']].values[0]:
-              best_rf_model = {'val_f1_score': df_temp[['F1-score']].values[0], 'model': rfModel, 'data': df_temp}
-
-print(best_rf_model)
-display(df_model_rf_results)
 
 
 # COMMAND ----------
 
-import re
 def ExtractFeatureImp(featureImp, dataset, featuresCol):
     list_extract = []
     for i in dataset.schema[featuresCol].metadata["ml_attr"]["attrs"]:
@@ -1136,21 +1057,17 @@ sampling_method = 'BootStrapping'
 df_importance = ExtractFeatureImp(rfModel.bestModel.stages[0].featureImportances, preppedDataDF_train[sampling_method], "features")
 # df_importance.head(50)
 
-var_name = []
-for features in df_importance.name.values[:]:
-  if len(features.split('classVec')) > 1:
-    var_name.append(features.split('classVec')[0])
-  elif len(features.split('_IMPUTE')) > 1:
-    var_name.append(features.split('_IMPUTE')[0])
-  else:
-    var_name.append(features)
-    print('Did not split variable {}'.format(features))
-df_importance.name = var_name
-df_importance.head(50)
-
-# COMMAND ----------
-
-display(df_model_rf_results)
+# var_name = []
+# for features in df_importance.name.values[:]:
+#   if len(features.split('classVec')) > 1:
+#     var_name.append(features.split('classVec')[0])
+#   elif len(features.split('_IMPUTE')) > 1:
+#     var_name.append(features.split('_IMPUTE')[0])
+#   else:
+#     var_name.append(features)
+#     print('Did not split variable {}'.format(features))
+# df_importance.name = var_name
+display(df_importance)
 
 # COMMAND ----------
 
@@ -1159,27 +1076,22 @@ display(df_model_rf_results)
 
 # COMMAND ----------
 
-#class weights
-
-tree_list = [3,5,7, 9, 11]
-depths = [3, 4, 5]
+tree_list = [11]
+depths = [5]
 model_name = 'GradientBoostedTrees'
 evaluator = BinaryClassificationEvaluator(metricName="areaUnderPR")
-numFolds =5
+numFolds = 5
 df_model_gbt_results = pd.DataFrame()
 iteration = 0
-best_gbt_model ={}
-
-sampling_methods = ['BootStrapping']
+best_gbt_model = {}
+sampling_methods = ['ClassWeighted']#, 'BootStrapping', 'NoOversampling']
 
 for sampling_method in sampling_methods:
-  for trees in tree_list:
-    for depth in depths:
+  for depth in depths:
+    for trees in tree_list:
 
-      gbtModel = None
-      
       dataset = {'Train': preppedDataDF_train[sampling_method], 'Val': preppedDataDF_val[sampling_method]}
-      
+      gbtModel = None
       # Fit model to prepped data
       if sampling_method =='ClassWeighted':
         gbt = GBTClassifier(labelCol="label", featuresCol="features", weightCol="classWeights")
@@ -1209,22 +1121,9 @@ for sampling_method in sampling_methods:
 
       prefixes = ['Train', 'Val']
       for data_prefix in prefixes:
-        hyperparameters = json.dumps({'maxIter':str(trees), 'maxDepth':str(depth)})
-        df_temp = runAssessments(gbtModel, data_prefix, dataset[data_prefix], iteration, hyperparameters, sampling_method, model_name)
-        df_model_gbt_results = df_model_gbt_results.append(df_temp)
+        hyperparameters = json.dumps({'maxIter':str(trees), 'maxDepth': str(depth)})
+        output = runAssessments(gbtModel, data_prefix, dataset[data_prefix], iteration, hyperparameters, sampling_method, model_name)
 
-        print('---------------------------------------------------')
-
-        iteration += 1
-        if data_prefix == 'Val':
-          if not best_gbt_model:
-            best_gbt_model = {'val_f1_score': df_temp[['F1-score']].values[0], 'model': gbtModel, 'data': df_temp}
-          else:
-            if best_gbt_model['val_f1_score'] < df_temp[['F1-score']].values[0]:
-              best_gbt_model = {'val_f1_score': df_temp[['F1-score']].values[0], 'model': gbtModel, 'data': df_temp}
-            
-print(best_gbt_model)
-display(df_model_gbt_results)
 
 # COMMAND ----------
 
@@ -1235,14 +1134,14 @@ display(df_model_gbt_results)
 # COMMAND ----------
 
 # eXtreme Gradient Boosting
-etas = [1e-1, 1e-2, 1e-3]
-depths = [4, 8, 12]
+etas = [1e-1] #, 1e-2, 1e-3]
+depths = [8] #[4, 8, 12]
 model_name = 'eXtremeGradientBoostedTrees'
 numFolds = 5
 df_model_xgb_results = pd.DataFrame()
 iteration = 0
 best_xgb_model = {}
-sampling_methods = ['BootStrapping', 'NoOversampling', 'ClassWeighted']
+sampling_methods = ['ClassWeighted'] #['BootStrapping', 'NoOversampling', 'ClassWeighted']
 
 xgbParams = dict(
   eta=0.1,
@@ -1294,27 +1193,62 @@ for sampling_method in sampling_methods:
       prefixes = ['Train', 'Val']
       for data_prefix in prefixes:
         hyperparameters = json.dumps({'eta':str(eta), 'maxDepth': str(depth)})
-        df_temp = runAssessments(xgbModel, data_prefix, dataset[data_prefix], iteration, hyperparameters, sampling_method, model_name)
-        df_model_xgb_results = df_model_xgb_results.append(df_temp)
+        output = runAssessments(xgbModel, data_prefix, dataset[data_prefix], iteration, hyperparameters, sampling_method, model_name)
 
         print('---------------------------------------------------')
 
-        iteration += 1
-        if data_prefix == 'Val':
-          if not best_xgb_model:
-            best_xgb_model = {'val_f1_score': df_temp[['F1-score']].values[0], 'model': xgbModel, 'data': df_temp}
-          else:
-            if best_xgb_model['val_f1_score'] < df_temp[['F1-score']].values[0]:
-              best_xgb_model = {'val_f1_score': df_temp[['F1-score']].values[0], 'model': xgbModel, 'data': df_temp}
-            
-print(best_xgb_model)
-display(df_model_xgb_results)
+
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC 
-# MAGIC #### Test Dataset Evaluation
+# MAGIC #### Evaluate Best Model on Test
+# MAGIC 
+# MAGIC Evaluating the xgBoost model on the hold out test set.
 
 # COMMAND ----------
 
+# Test on 2019 dataset
+iteration=0
+xgb_threshold = 0.632 # based on val data
+predictions_test = xgbModel.transform(preppedDataDF_test[sampling_method])
+predictionAndTarget = predictions_test[["label", "probability"]].rdd.map(lambda x: (x[0], x[1][1]))
+predictionAndTargetNumpy = np.array((predictionAndTarget.collect()))
+y_test, y_pred = np.array(predictionAndTargetNumpy[:,0]), np.array([0 if k < xgb_threshold else 1 for k in predictionAndTargetNumpy[:,1]])
+
+data = {'y_test': y_test,
+        'y_pred': y_pred
+        }
+
+df = pd.DataFrame(data, columns=['y_test','y_pred'])
+cm = pd.crosstab(df['y_test'], df['y_pred'], rownames=['Actual'], colnames=['Predicted'])
+
+sns.heatmap(cm/len(y_test), annot=True)
+plt.show()
+# output = runAssessments(xgbModel, 'Test', preppedDataDF_test[sampling_method], iteration, hyperparameters, sampling_method, model_name)
+
+# COMMAND ----------
+
+# Compute Pr, Rec and F measure on the test predictions
+pr = precision_score(y_test, y_pred)
+rec = recall_score(y_test, y_pred)
+f_0p5 = (1+0.25)*pr*rec/(0.25*pr + rec)
+print(pr, rec, f_0p5)
+
+# COMMAND ----------
+
+featureScoreMap_gain = xgbModel.bestModel.stages[0].nativeBooster.getScore("", "gain")
+sortedScoreMap = featureScoreMap_gain.entries
+names = sortedScoreMap
+print(sortedScoreMap)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC 
+# MAGIC #### List of all results
+
+# COMMAND ----------
+
+display(sqlContext.sql(""" select * from group25.experiment_results_new where Prefix = 'Val' order by pr_AUC desc, f0p5_score desc"""))
