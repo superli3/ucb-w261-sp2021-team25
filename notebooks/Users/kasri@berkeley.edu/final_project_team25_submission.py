@@ -153,7 +153,6 @@ from IPython.core.display import HTML
 # MAGIC 
 # MAGIC $$F_{\beta} = (1 + \beta^{2}) \frac{precision \cdot recall}{(\beta^{2} \cdot precision) + recall} $$
 # MAGIC 
-# MAGIC [review] - fix F
 # MAGIC 
 # MAGIC For reference, utilizing a \\( F_{0.5} \\) score would produce an F score more geared towards precision while still factoring in recall. On the other hand, utilizing a \\( F_2 \\) score would bias our results more towards recall as opposed to precision. 
 # MAGIC 
