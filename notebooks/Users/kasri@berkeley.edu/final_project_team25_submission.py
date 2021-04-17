@@ -9,64 +9,6 @@
 
 # COMMAND ----------
 
-# MAGIC %md
-# MAGIC 
-# MAGIC ## last meeting notes
-# MAGIC 
-# MAGIC * Examine different thresholds cut offs for models *  Karthik
-# MAGIC * Gradient Boosted Trees *  Karthik
-# MAGIC * Fix features where we had to impute a lot of values (mostly done?)
-# MAGIC * Presentation for next week
-# MAGIC     * Flow charts
-# MAGIC     * EDA plots
-# MAGIC     * Add code slides
-# MAGIC         * UTC/Timezone formatting *  Jeff
-# MAGIC         * Example of how Weather features were generated *  Jeff
-# MAGIC         * Page Rank *  Justin
-# MAGIC         * Inbound Outbound *  Sonya
-# MAGIC         * Code for Modelling *  Karthik
-# MAGIC 	* A few plots to show how the distribution works after the imputation
-# MAGIC 	* Inbound/Outbound
-# MAGIC 	* Page Rank
-# MAGIC * Write up results
-# MAGIC * Notebooks aspect
-# MAGIC * Clean up individual notebooks
-# MAGIC 	* Main
-# MAGIC         *  Toy Model *  take hw4, change it to logistic regression, run a small dataset through (Jeff)
-# MAGIC         *  Business Case/Question Formulation *  Jeff
-# MAGIC             *  SOTA in the domain
-# MAGIC             *  Discuss evaluation Metrics
-# MAGIC         *  EDA and Discussion of Challenges *  Justin
-# MAGIC             *  EDA plots *  Justin, but Sonya and Jeff need to provide some good features for plotting
-# MAGIC                 * Show MV features *  show how sparse they are
-# MAGIC                 * Correlation Matrix *  Justin
-# MAGIC             *  Challenges *  Justin
-# MAGIC                 *  Large amount of Weather Vars, multiople dimensions (Jeff)
-# MAGIC         *  Feature Engineering
-# MAGIC             *  Inbound Outbound, Delays, Divered Flights *  Sonya
-# MAGIC             *  Time aspect *  Sonya
-# MAGIC             *  Leakage *  Sonya
-# MAGIC             *  Page Rank *  Justin
-# MAGIC         *  Algorithm Exploration *  Karthik
-# MAGIC         *  Algorithm Implementation *  Karthik
-# MAGIC         *  Conclusions *  Karthik 
-# MAGIC         *  Application of Course Concepts *  Karthik
-# MAGIC             *  Normalization 
-# MAGIC             *  Assumptions for Different Algorithms
-# MAGIC             *  Page Rank *  Justin
-# MAGIC             *  Regularization
-# MAGIC             *  One Hot Encoding / vector embeddings / feature selection
-# MAGIC 	* Page Rank
-# MAGIC 	* Weather
-# MAGIC 	* Inbound outbound
-# MAGIC 	* Joining
-# MAGIC 	* Model
-# MAGIC     * Conclusion
-# MAGIC done
-# MAGIC  * How many records are imputed for our dataset (done)
-
-# COMMAND ----------
-
 # MAGIC %md ## Table of Contents
 # MAGIC 
 # MAGIC * __Section 1__ - Question Formulation
@@ -128,6 +70,10 @@
 
 # COMMAND ----------
 
+!pip install -U dtreeviz
+
+# COMMAND ----------
+
 ## imports
 
 from pyspark.sql import functions as f
@@ -184,26 +130,34 @@ from IPython.core.display import HTML
 # MAGIC While this problem is one that can definitely be continuously dug into and improved upon, we hope that some of the ideas and approaches outlined in this notebook can be applied to improving prediction down the line. 
 # MAGIC 
 # MAGIC We have featured some papers here that have helped us inform our approach to this problem.
-# MAGIC [Some comment on state of the art - ask Karthik] [review]
+# MAGIC 
+# MAGIC ## Relevant Literature
+# MAGIC 
+# MAGIC 1) 2017. A Review on Flight Delay Prediction. Alice Sternberg, Jorge de Abreu Soares, Diego Carvalho, Eduardo S. Ogasawara
+# MAGIC 
+# MAGIC 2) 2019. A Data Mining Approach to Flight Arrival Delay Prediction for American Airlines. Navoneel Chakrabarty
+# MAGIC 
+# MAGIC 3) 2019. Development of a predictive model for on-time arrival flight of airliner by discovering correlation between flight and weather data. Noriko Etani.
+# MAGIC 
+# MAGIC 4) https://stat-or.unc.edu/wp-content/uploads/sites/182/2018/09/Paper3_MSOM_2012_AirlineFlightDelays.pdf
+# MAGIC 
 # MAGIC 
 # MAGIC 
 # MAGIC ### Evaluation metrics
 # MAGIC 
 # MAGIC A brief comment: a common approach to evaluating most ML based problems is to look at problems from a precision recall approach. Emphasizing precision will position our target towards emphasizing false positive whereas recall will position our target against false negatives. Accidentally predicting a flight may be delayed (false positive) cause someone to show up later than expected to a flight. Conversely, failing to predict a delayed flight may cause someone to show up earlier than needed to an airport.
 # MAGIC 
-# MAGIC There are many people in the economic system who are affected by the accuracy of flight predictions - flight passengers, airport and airline employees, as well as general shareholders of airline companies. Ultimately, it is incumbent on the customer (namely, airline companies) to accurately measure the dollar cost of delayed flights from a FP, FN perspective, and which one to subsequently optimize for. For the purposes of this notebook, we will stick to optimizing on our models based on a F1 score to have a good balance between precision & recall.
+# MAGIC There are many people in the economic system who are affected by the accuracy of flight predictions - flight passengers, airport and airline employees, as well as general shareholders of airline companies. Ultimately, it is incumbent on the customer (namely, airline companies) to accurately measure the dollar cost of delayed flights from a FP, FN perspective, and which one to subsequently optimize for. 
 # MAGIC 
-# MAGIC The formula for an F beta score is below:
+# MAGIC The formula for an \\(F\\) beta score is below:
 # MAGIC 
 # MAGIC $$F_{\beta} = (1 + \beta^{2}) \frac{precision \cdot recall}{(\beta^{2} \cdot precision) + recall} $$
 # MAGIC 
-# MAGIC For reference, utilizing a F0.5 score would produce an F score more geared towards precision while still factoring in recall. On the other hand, utilizing a F2 score would bias our results more towards recall as opposed to precision. 
+# MAGIC [review] - fix F
 # MAGIC 
-# MAGIC [review] - Karthik 
-
-# COMMAND ----------
-
-# MAGIC %md 
+# MAGIC For reference, utilizing a \\( F_{0.5} \\) score would produce an F score more geared towards precision while still factoring in recall. On the other hand, utilizing a \\( F_2 \\) score would bias our results more towards recall as opposed to precision. 
+# MAGIC 
+# MAGIC We take the airline/airport's point of view and use the \\( F_{0.5} \\) score to determine model performance. We believe that falsely predicting a delay (precision) that results in airlines/airports making changes is far more detrimental than the passenger having to unexpectedly wait longer for departures (recall).
 
 # COMMAND ----------
 
@@ -215,16 +169,16 @@ from IPython.core.display import HTML
 
 # MAGIC %md 
 # MAGIC 
-# MAGIC As part of the project, we were given access to a dataset consisting of US flights from the years 2015-2019. We generally worked with data in SQL format, using the databricks tables as that made it relatively easy to checkpoint our datasets and seemed less cumbersome than working with pyspark. We loaded the flight data into a table and looked at some basic stats.
+# MAGIC As part of the project, we were given access to a dataset consisting of US flights from the years 2015-2019. We generally worked with data in SQL format, using the Databricks tables as that made it relatively easy to checkpoint our datasets and seemed less cumbersome than working with pyspark. We loaded the flight data into a table and looked at some basic stats.
 
 # COMMAND ----------
 
 # MAGIC %sql
 # MAGIC 
-# MAGIC SELECT 'All' as Year, count(*)
+# MAGIC SELECT 'All' as Year, count(*) as RecordCount
 # MAGIC FROM group25.airlines_main
 # MAGIC UNION
-# MAGIC SELECT YEAR, count(*)
+# MAGIC SELECT YEAR, count(*) as RecordCount
 # MAGIC FROM group25.airlines_main
 # MAGIC GROUP BY 1
 # MAGIC ORDER BY 1;
@@ -233,7 +187,7 @@ from IPython.core.display import HTML
 
 # MAGIC %md
 # MAGIC 
-# MAGIC The airlines data is comprised of approximately 31M flights, and the number of flights seems to be increasing year-over-year. We suspect if we had more recent data, we would have seen a dip starting in 2020 as lockdowns for the Covid pandemic began in the US. We realized up front that we would run into challenges with leackage, which we will discuss more in depth later. For now, we will exclude 2019 from EDA, as that will be our holdout set for test.
+# MAGIC The airlines data is comprised of approximately 31M flights, and the number of flights seems to be increasing year-over-year. We suspect if we had more recent data, we would have seen a dip starting in 2020 as lockdowns for the Covid pandemic began in the US. We realized up front that we would run into challenges with leakage, which we will discuss more in depth later. For now, we will exclude 2019 from EDA, as that will be our holdout set for test.
 
 # COMMAND ----------
 
@@ -254,7 +208,7 @@ from IPython.core.display import HTML
 # MAGIC Looking at the schema for the table gave us some initial sense of which data might be continuous (e.g. often, but not always, `int` fields) versus categorical (`string` fields).
 # MAGIC We used [the provided codebook](https://www.transtats.bts.gov/Fields.asp?gnoyr_VQ=FGJ) to better understand the fields in the table. One of the first challenges we faced was getting data into UTC format, since the codebook indicated that times in the original dataset were local times relative to the airport. In order to convert these into UTC, we first had to find additional data telling us what timezone the airport was in. For this, we found [Airport codes and timezones](https://openflights.org/data.html) from the OpenFlights project.
 # MAGIC 
-# MAGIC This data was joined to the flights data and combined with the data in the flights field to generate a new table with UTC timings. This was particularly necesary for joining with the weather datasets, which will be discussed in a section of its own later in this notebook.
+# MAGIC This data was joined to the flights data and combined with the data in the flights field to generate a new table with UTC timings. This was particularly necessary for joining with the weather datasets, which will be discussed in a section of its own later in this notebook.
 
 # COMMAND ----------
 
@@ -275,44 +229,53 @@ def get_sampled_dataset(col_name, sample_size):
   
 def set_xticklabels(ax):
   ax.set_xticklabels(ax.get_xticklabels(), rotation=45, horizontalalignment='right')
-  
-def plot_cont_vs_delay(col_name, sample_size=100_000, df=None):
+
+def set_yunits(ax, col_name, units):
+  if units is not None:
+    ax.set(ylabel=f'{col_name} ({units})')
+
+def plot_cont_vs_delay(col_name, sample_size=100_000, df=None, units=None):
   sns.set(style="darkgrid")
   sns.set_palette("colorblind")
 
   sampledDf = df if (df is not None) else get_sampled_dataset(col_name, sample_size)
+  sampledDf['DEP_DEL15_TEXT'] = sampledDf['DEP_DEL15'].apply(lambda x: 'YES DELAYED' if x == 1 else "NOT DELAYED")
   fig, axes = plt.subplots(1, 3, figsize=(20,5))
   sns.scatterplot(x='DEP_DELAY', y=col_name, data=sampledDf, ax=axes[0])
   axes[0].set(title=f'DEP_DELAY vs {col_name}')
+  set_yunits(axes[0], col_name, units)
   
-  sns.boxplot(y=col_name, x='DEP_DEL15', data=sampledDf, ax=axes[1], width=0.4)
-  axes[1].set(title=f'DEP_DEL15 vs {col_name}')
+  sns.boxplot(y=col_name, x='DEP_DEL15_TEXT', data=sampledDf, ax=axes[1], width=0.4)
+  axes[1].set(title=f'DEP_DEL15 vs {col_name}', xlabel='DEP_DEL15')
+  set_yunits(axes[1], col_name, units)
   
-  sns.boxplot(y=col_name, x='DEP_DEL15', data=sampledDf, ax=axes[2], showfliers=False, width=0.4)
-  axes[2].set(title=f'DEP_DEL15 vs {col_name} - No outliers')
+  sns.boxplot(y=col_name, x='DEP_DEL15_TEXT', data=sampledDf, ax=axes[2], showfliers=False, width=0.4)
+  axes[2].set(title=f'DEP_DEL15 vs {col_name} - No outliers', xlabel='DEP_DEL15')
+  set_yunits(axes[2], col_name, units)
   plt.suptitle(f'{col_name} vs Delay')
 
 
-def plot_cat_vs_delay(col_name, sample_size=100_000, rename_cats=None, cat_order=None, df = None):
+def plot_cat_vs_delay(col_name, sample_size=100_000, rename_cats=None, cat_order=None, df = None, units=None):
   sns.set(style="darkgrid")
   sns.set_palette("colorblind")
 
   sampledDf = df if (df is not None) else get_sampled_dataset(col_name, sample_size)
+  sampledDf['DEP_DEL15_TEXT'] = sampledDf['DEP_DEL15'].apply(lambda x: 'YES DELAYED' if x == 1 else "NOT DELAYED")
   fig, axes = plt.subplots(1, 4, figsize=(25,5))
   
   if rename_cats:
     sampledDf[col_name] = sampledDf[col_name].apply(rename_cats)
   
   sns.stripplot(y='DEP_DELAY', x=col_name, order=cat_order, data=sampledDf, ax=axes[0])
-  axes[0].set(title=f'DEP_DELAY vs {col_name} - Distributions')
+  axes[0].set(title=f'DEP_DELAY vs {col_name} - Distributions', ylabel="DEP_DELAY (minutes)")
   
   sns.boxplot(y='DEP_DELAY', x=col_name, order=cat_order, showfliers=False, data=sampledDf, ax=axes[1])
-  axes[1].set(title=f'DEP_DELAY vs {col_name} - Distributions w/o Outliers')
+  axes[1].set(title=f'DEP_DELAY vs {col_name} - Distributions w/o Outliers', ylabel="DEP_DELAY (minutes)")
   
-  sns.countplot(x=col_name, hue='DEP_DEL15', order=cat_order, data=sampledDf, ax=axes[2])
+  sns.countplot(x=col_name, hue='DEP_DEL15_TEXT', order=cat_order, data=sampledDf, ax=axes[2])
   axes[2].set(title=f'DEP_DEL15 vs {col_name} - Class Counts')
   
-  normalized = sampledDf.groupby(col_name)['DEP_DEL15'].value_counts(normalize=True).unstack('DEP_DEL15').plot.bar(stacked=True, ax=axes[3])
+  normalized = sampledDf.groupby(col_name)['DEP_DEL15_TEXT'].value_counts(normalize=True).unstack('DEP_DEL15_TEXT').plot.bar(stacked=True, ax=axes[3])
   axes[3].set(title=f'DEP_DEL15 by {col_name} - Normalized Counts')
   
   for ax in axes:
@@ -369,23 +332,25 @@ cmap = sns.diverging_palette(230, 20, as_cmap=True)
 sns.heatmap(corr, mask=mask, cmap=cmap, vmax=.3, center=0, annot=True,
             square=True, linewidths=.5, cbar_kws={"shrink": .5})
 
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC 
-# MAGIC Looking at this chart helps us identify features that are highly-colinear and probably would not make sense to include together in our models. For example, `ACTUAL_ELAPSED_TIME` and `AIR_TIME` have a correlation coefficient of 0.99 and therfore probably do not both need to be included in set of model features we use.
-# MAGIC 
-# MAGIC Further, we see some interesting relationships to the outcome variable, for example that distance and delay times are not highly correlated, which might suggest that the length of a flight is not particularly helpful in understanding the chances it might be delayed. We can look more closely at that relationship using our plotting methods 
-
-# COMMAND ----------
-
-plot_cont_vs_delay('DISTANCE')
+x = ax.set(title = 'Correlations of Continuous Variables')
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC 
-# MAGIC On the otherhand, many of the features in the dataset are not actually useful for prediction because they would not be available at the time of prediciton. Obviously, we cannot include arrival time in predicting departure delays. So many of these features were ruled out on that basis.
+# MAGIC Looking at this chart helps us identify features that are highly-colinear and probably would not make sense to include together in our models. For example, `ACTUAL_ELAPSED_TIME` and `AIR_TIME` have a correlation coefficient of 0.99 and therefore probably do not both need to be included in set of model features we use.
+# MAGIC 
+# MAGIC Further, we see some interesting relationships to the outcome variable, for example that distance and delay times are not highly correlated, which might suggest that the length of a flight is not particularly helpful in understanding the chances it might be delayed. We can look more closely at that relationship using our plotting methods.
+
+# COMMAND ----------
+
+plot_cont_vs_delay('DISTANCE', units="miles")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC 
+# MAGIC On the other hand, many of the features in the dataset are not actually useful for prediction because they would not be available at the time of prediction. Obviously, we cannot include arrival time in predicting departure delays. So many of these features were ruled out on that basis.
 
 # COMMAND ----------
 
@@ -405,13 +370,13 @@ daily_delay_frac= spark.sql("SELECT * FROM group25.daily_delay_fraction WHERE ye
 fig, ax = plt.subplots(1, 1, figsize=(20,7))
 sns.lineplot(y='fraction_delayed', x = 'day', data=daily_delay_frac)
 ax.set(xlabel="Day", ylabel="Fraction Delayed")
-plt.suptitle('Fraction of Flights Delayed per Day')
+plt.suptitle('Fraction of Flights Delayed per Day', fontsize = 20)
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC 
-# MAGIC There is an interesting pattern in the impact of local and UTC hours on delays. For the continuous version of delays, we end up with a clear gap in the distribution that shows up in the strip plot (on the left) below, and is consistent across hours. Additionally we see that a larger percentage of flights are delayed past 15 minutes in the local evening hours, between 7 and 10PM.
+# MAGIC There is an interesting pattern in the impact of local hours on delays. For the continuous version of delays, we end up with a clear gap in the distribution that shows up in the strip plot (on the left) below, and is consistent across hours. Additionally we see that a larger percentage of flights are delayed past 15 minutes in the local evening hours, between 7 and 10PM.
 
 # COMMAND ----------
 
@@ -425,7 +390,8 @@ plot_cat_vs_delay('DEP_LOCAL_HOUR', sample_size = 100_000)
 
 # COMMAND ----------
 
-plot_cat_vs_delay('DAY_OF_WEEK', sample_size = 100_000)
+days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+plot_cat_vs_delay('DAY_OF_WEEK', sample_size = 100_000, rename_cats = lambda x: days[x-1], cat_order=days)
 
 # COMMAND ----------
 
@@ -451,29 +417,22 @@ displayHTML("<img src = 'https://github.com/kasri-mids/ucb-w261-sp2021-team25/bl
 
 # COMMAND ----------
 
-# MAGIC %md some writeup here on the prediction pipeline
-# MAGIC [review]
-
-# COMMAND ----------
-
 # MAGIC %md
 # MAGIC ## Time
 # MAGIC 
 # MAGIC ### Motivation
 # MAGIC 
-# MAGIC A common trope for time is that it is a precious resource, and that is doubly true for the field of flight delay prediction. The concept of time was a topic we discussed heavily when tackling this problem - more specifically, the granularity. For instance, will knowing the information for the previous year help us make an informed decision for whether the next flight will be delayed? Possibly, we also wanted to have more granular data as well, since we believed that there would be much better granularity. 
-# MAGIC 
-# MAGIC On the other hand, will knowing the flight data in 5 minute increments and binning the data as such lead to better predictions? That is certainly possible, but may also lead to some additional processing for complicated pipelined features.
+# MAGIC A common trope for time is that it is a precious resource, and that is doubly true for the field of flight delay prediction. The concept of time was a topic we discussed heavily when tackling this problem - more specifically, the granularity. For instance, will knowing the information for the previous year help us make an informed decision for whether the next flight will be delayed? Possibly, we also wanted to have more granular data as well, since we believed that there would be much better granularity. On the other hand, will knowing the flight data in 5 minute increments and binning the data as such lead to better predictions? That is certainly possible but may also lead to some additional processing for complicated pipelined features.
 # MAGIC 
 # MAGIC Ultimately, we settled on an hourly granularity. While this was partially based on consensus and intuition, it is a nice round unit of time that is widely understood and helps to make this analysis easier to interpret. However, more granular binnings of time, such as by 5 minute increments, could possibly yield better results.
 # MAGIC 
-# MAGIC In terms of how far in advance we would have this information, we decided to try and gather a set of features for each airport 2 hours in advance. For instance, what was the weather 2 hours prior to the scheduled takeoff? What was the status of delays and divered flights at the outgoing airport?
+# MAGIC In terms of how far in advance we would have this information, we decided to try and gather a set of features for each airport 2 hours in advance. For instance, what was the weather 2 hours prior to the scheduled takeoff? What was the status of delays and diverted flights at the outgoing airport?
 # MAGIC 
-# MAGIC The challenge with this approach was that not all of our data was formatted correctly. While the weather data was given in a standardized UTC format, the flight data was not. Ensuring that our dataset utilized consistent time formats across the board was important to predicting delays 2 hours out. The datetime format is critical for several niche problems with joining on data from 2 hours prior. For instance, what if you want flight data 2 hours prior to a 1 am flight? You cannot join simply on FL_Date and a hour granularity. Furthermore, once you start working with timezones and daylight savings, things get especially complicated. A good rule of thumb for sanity is to generate all of your datetime formats first as upstream as possible, before applying any interval functions. Any downstream code or engineered features benefit immensely from this approach.
+# MAGIC The challenge with this approach was that not all our data was formatted correctly. While the weather data was given in a standardized UTC format, the flight data was not. Ensuring that our dataset utilized consistent time formats across the board was important to predicting delays 2 hours out. The datetime format is critical for several niche problems with joining on data from 2 hours prior. For instance, what if you want flight data 2 hours prior to a 1 am flight? You cannot join simply on FL_Date and a hour granularity. Furthermore, once you start working with time zones and daylight savings, things get especially complicated. A good rule of thumb for sanity is to generate all of your datetime formats first as upstream as possible, before applying any interval functions. Any downstream code or engineered features benefit immensely from this approach.
 # MAGIC 
 # MAGIC In terms of grabbing the time zone data per airport, we utilized the OpenFlights data. In order to ensure proper matching with our dataset, we utilized timezone data from [OpenFlights](https://openflights.org/data.html).
 # MAGIC 
-# MAGIC Spark has some limited inbuilt capabilities when it comes to handling timezones, so we leveraged more commonly used datetime python libraries. The issue with this is that you have to run your data through a Spark UDF to leverage the datetime library at scale. While doing this is not the most performant Spark operation, it did work with the scale of data we had in a reasonable amount of time.
+# MAGIC Spark has some limited inbuilt capabilities when it comes to handling time zones, so we leveraged more commonly used datetime python libraries. The issue with this is that you have to run your data through a Spark UDF to leverage the datetime library at scale. While doing this is not the most performant Spark operation, it did work with the scale of data we had in a reasonable amount of time.
 
 # COMMAND ----------
 
@@ -510,7 +469,7 @@ displayHTML("<img src = 'https://github.com/kasri-mids/ucb-w261-sp2021-team25/bl
 # MAGIC 
 # MAGIC ### Example of how a field was parsed
 # MAGIC 
-# MAGIC We will walk through the field AA1 as an example for how features were mined in the NOAA dataset. All of the other columns we mined for used a similar format, so highlighting one instance should also inform how the other fields were parsed. The field AA1 is actually a comma delimited field. This applies to most, if not all columns in the ISD dataset. An observation for AA1 may look like the following.
+# MAGIC We will walk through the field AA1 as an example for how features were mined in the NOAA dataset. All of the other columns we mined for used a similar format, so highlighting one instance should also inform how the other fields were parsed. The field AA1 is a comma delimited field. This applies to most, if not all columns in the ISD dataset. An observation for AA1 may look like the following.
 # MAGIC 
 # MAGIC __Sample Field:__ 04,9996,4,2
 # MAGIC 
@@ -528,9 +487,14 @@ displayHTML("<img src = 'https://github.com/kasri-mids/ucb-w261-sp2021-team25/bl
 # MAGIC 
 # MAGIC #### Why AA1?
 # MAGIC 
-# MAGIC When examining the NOAA dataset for instances of precipitation
+# MAGIC When examining the NOAA dataset for instances of precipitation, we noticed that there were multiple observations for rain, namely 
 # MAGIC 
-# MAGIC [review] - Jeff note - will finish this before Friday
+# MAGIC * Episodic occurrences
+# MAGIC * The greatest amount in the past 24 hours
+# MAGIC * Number  of days with specific amounts for the month
+# MAGIC * Maximum short duration for the month
+# MAGIC 
+# MAGIC ...and others, just to name a few. In our EDA for rain, it was clear that the episodic occurrences had the greatest number of observations and at the most granular times, so we decided to proceed with that approach. However, it is possible using other observations for rain may yield better results.
 # MAGIC 
 # MAGIC #### Diagram
 # MAGIC 
@@ -550,18 +514,156 @@ displayHTML("<img src = 'https://github.com/kasri-mids/ucb-w261-sp2021-team25/bl
 
 # MAGIC %md
 # MAGIC 
-# MAGIC Airline flight data forms a natural graph in some obvious ways. Airports are clearly connected by flights, so we can consider airports as verticies and flights between them as edges. We could make the vertices more complex by addtionally segmenting them by airline or time frame. We could also invert the graph, treat vertices as edges that connect an incoming flight to an outgoing flight. These approaches can be mixed in many ways, some of which may be computationally prohibitive.
+# MAGIC Airline flight data form a natural graph in some obvious ways. Airports are clearly connected by flights, so we can consider airports as vertices and flights between them as edges.
 # MAGIC 
-# MAGIC For any of these graphs, we might compute the centrality of its vertices using various scores. PageRank is one such score, and it tells us what proportion time a random surfer might spend at a given node if they were doing an infinite walk. In the airline cone
+# MAGIC For any of these graphs, we might compute the centrality of its vertices using various scores. PageRank is one such score, and it tells us what proportion time a random surfer might spend at a given node if they were doing an infinite walk. In the airline context, it would tell us the proportion of time a random traveler would land at a given airport if they were just taking flights from one airport, and occasionally teleporting to a random node.
+# MAGIC 
+# MAGIC This seemed like it might be a useful feature for understanding delays, so we experimented with a few different approaches. While the high-level graph with airports as vertices and flights as edges is fairly obvious, we could make the vertices more complex by additionally segmenting them by airline or time frame. We could also invert the graph, treat vertices as edges that connect an incoming flight to an outgoing flight. These approaches can be mixed in many ways, some of which may be computationally prohibitive.
+
+# COMMAND ----------
+
+# MAGIC %python
+# MAGIC 
+# MAGIC !pip install -U altair vega_datasets
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Inbound/Outbound Flights
+# MAGIC 
+# MAGIC ### Impact of Vertex Granularity
 
 # COMMAND ----------
 
-# MAGIC %md ### Inbound & outbound related dataframes computation flowcharts
+# MAGIC %md
+# MAGIC 
+# MAGIC We built the first graph using Airports as vertices, and flights between them as edges. The spark GraphX library comes with an implementation of Page Rank optimized to run in spark, so we used that to easily compute the page rank for each airport. The PageRanks of each airport in the US look like this:
+
+# COMMAND ----------
+
+import altair as alt
+from vega_datasets import data
+
+pr_dat = spark.sql("SELECT * FROM group25.airports_dat_txt2 ap INNER JOIN group25.AIRPORTS_PR_TRAIN pr on pr.airport = ap.IATA").toPandas()
+
+def map_background():
+  airports = data.airports.url
+  states = alt.topo_feature(data.us_10m.url, feature='states')
+  # US states background
+  return alt.Chart(states).mark_geoshape(
+        fill='lightgray',
+        stroke='white'
+    ).properties(
+        width=1000,
+        height=600
+    ).project('albersUsa')
+
+# airport positions on background
+points_pr = alt.Chart(pr_dat).mark_circle().encode(
+    longitude='Longitude:Q',
+    latitude='Latitude:Q',
+    size=alt.Size('pageRank:Q', title='Page Rank'),
+    color=alt.value('steelblue'),
+    tooltip=['Name:N','pageRank:Q']
+).properties(
+    title='Page Rank of Airports in the US',
+    width=1000,
+    height=600
+)
+
+pr = map_background() + points_pr
+
+pr
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC 
+# MAGIC We can clearly see that the Page Rank of these airlines matches what our intuition would be; busier airports like Atlanta, Chicago, Los Angeles, etc. tend to have higher Page Ranks than less busy airports. While this matches our expectations, we noticed a problem when we just compared the scores to the number of flights coming from a given airport. Looking at the chart on the left below, we can see there is an essentially linear relationship between the Page Rank and the number of flights from a given airport. All other things being equal, a simple count of flights is easier to compute and likely to be about as useful. 
+# MAGIC 
+# MAGIC We felt like there might still be some potential utility here, so we increased the complexity of our graphs by adding more granularity to the vertices. For example, we tried making each combination of airport, airline, and day of week a vertex. This ended up giving us additional information not captured in the simple flight counts. The chart on the right shows how the relationship spread and became less linear with increased vertex granularity.
+
+# COMMAND ----------
+
+cn_pr_dat = spark.sql("SELECT * FROM group25.airports_dat_txt2 ap INNER JOIN group25.AIRPORTS_PR_TRAIN pr on pr.airport = ap.IATA INNER JOIN  (SELECT ORIGIN, count(*) as fl_count FROM group25.airlines_main WHERE year < 2018 GROUP BY 1) cn on cn.ORIGIN = pr.airport").toPandas()
+
+fig, axes = plt.subplots(1, 2, figsize=(25, 7))
+p = sns.scatterplot(x='fl_count', y='pageRank', ax=axes[0], data=cn_pr_dat)
+x = axes[0].set(title='Airport Level PageRank vs Count of Flights', xlabel="Flight Count", ylabel="PageRank")
+
+cn_pr_dat_h = spark.sql("""
+  SELECT * 
+  FROM group25.airports_dat_txt2 ap 
+    INNER JOIN group25.AIRPORTS_AIRLINE_DOW_PR_TRAIN pr on pr.airport = ap.IATA 
+    INNER JOIN  (SELECT ORIGIN, OP_CARRIER, DAY_OF_WEEK, count(*) as fl_count FROM group25.airlines_main WHERE year < 2018 GROUP BY 1, 2, 3) cn on cn.ORIGIN = pr.airport AND cn.DAY_OF_WEEK = pr.day_of_week AND cn.OP_CARRIER = pr.airline
+  """).toPandas()
+
+weekday_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+cn_pr_dat_h['weekday_name'] = cn_pr_dat_h.apply(lambda row: weekday_names[int(row.day_of_week)-1], axis=1)
+
+p = sns.scatterplot(x='fl_count', y='pageRank', hue='weekday_name', hue_order=weekday_names, ax=axes[1], data=cn_pr_dat_h)
+x = axes[1].legend(title = 'Day of Week')
+x = axes[1].set(title='Airport/Airline/Day of Week Level PageRank vs Count of Flights', xlabel="Flight Count", ylabel="PageRank")
+x = plt.suptitle('Comparing Flight Count to Page Rank for Differing Granularities')
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC 
+# MAGIC ### Inverting the Graph
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC 
+# MAGIC While airports as vertexes and flights as edges is a very natural way to build a graph, there are potentially other ways we can do this. We wanted to try inverting the graph so that flights were vertexes and airports were edges. Essentially a flight going from Atlanta to Chicago (ATL->ORD) would be a vertex, and a flight going from Chicago to Los Angeles (ORD->LAX) would be another vertex. These vertices would be connected by an edge, because the destination of the first flight is the same as the origin of the next flight (ORD).
+
+# COMMAND ----------
+
+displayHTML("<h3 style='text-align: center'>Flights as Vertices</h3><img src = 'https://github.com/kasri-mids/ucb-w261-sp2021-team25/blob/main/images/pagerank_map.png?raw=true' style='display: block;margin-left: auto;margin-right: auto;width: 30%;'>")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC 
+# MAGIC As we did for the traditional airport centric graph, we experimented with several different levels of granularity. In the end, we included vertexes as flights on a given day at a given hour as the vertices, and airports on a given date at a given hour as the edges connecting them. Out of all the Page Rank versions we tried, this one seemed to give the best signal with respect to the variable we want to predict. The charts below compare these Page Ranks to the outcome variable.
+
+# COMMAND ----------
+
+sampledDf = sqlContext.sql("""
+WITH flights AS (SELECT ORIGIN, DEST, DEP_UTC_HOUR, DAY_OF_WEEK, DEP_DELAY, DEP_DEL15 FROM (SELECT ORIGIN, DEST, DEP_UTC_HOUR, DAY_OF_WEEK, COALESCE(DEP_DELAY, 0) AS DEP_DELAY, COALESCE(DEP_DEL15, 0) AS DEP_DEL15
+                 FROM group25.airlines_utc_main WHERE year<2019) TABLESAMPLE(100000 ROWS))
+SELECT DEP_DEL15, DEP_DELAY, pageRank FROM flights f left join group25.flights_dow_hour_pr_train pr 
+  ON f.ORIGIN = pr.origin AND f.DEST = pr.dest AND pr.hour = f.DEP_UTC_HOUR AND f.DAY_OF_WEEK = pr.day_of_week
+""").toPandas()
+
+plot_cont_vs_delay('pageRank', df=sampledDf)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC 
+# MAGIC ### Notes About Topic Sensitive PageRank
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC 
+# MAGIC Topic-sensitive page rank computes page rank scores with a bias towards a specific topic. This is done by distributing the mass of dangling nodes to only vertexes identified within the topic. Another way to say this is that our random traveler would only be able to teleport to locations marked as being part of the topic.
+# MAGIC 
+# MAGIC There are several ways one might use topic-sensitive page rank for airline delays. One example would be to look at airlines as topics, so that when teleportation happened, the random traveller only went to a specific airport and airline. Similarly, some time dimension, like hour of day, could be considered a topic.
+# MAGIC 
+# MAGIC The GraphX libraries do not have an available implementation for topic-sensitive page rank. Instead, they have a personalized page rank, which is very similar except the topic can only be assigned to a single node. They have a parallel personalized page rank algorithm as well, but this computes several personalized (i.e. only one node in the topic) page ranks at once. It would have been relatively simple to apply the topic sensitivity to our Page Rank algorithm from homework 5. We would have just needed to broadcast the topic nodes, and then only apply the dangling mass to those nodes. Unfortunately, we ran out of time before we could make and test these modifications, so we will leave that as a future area for exploration.
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Airport Capacity
+# MAGIC 
+# MAGIC We also wanted to look at the volume of **inbound** and **outbound** flights at an airport when trying to predict flight delays. The reason we wanted to look at this was because we hypothesized periods of high traffic, or high delays at an airport may be correlated with delays.
+
+# COMMAND ----------
+
+# MAGIC %md ### Inbound & Outbound Computation Process
 # MAGIC 
 # MAGIC - This is the flowchart of how we computed the sets of inbound and outbound features. 
 # MAGIC - We first computed 1st iteration and raw statistics of inbound and outbound counts. 
@@ -570,11 +672,11 @@ displayHTML("<img src = 'https://github.com/kasri-mids/ucb-w261-sp2021-team25/bl
 
 # COMMAND ----------
 
-displayHTML("<img src = https://github.com/kasri-mids/ucb-w261-sp2021-team25/blob/main/images/Inbound_Outbound_dataframes_v2.png?raw=true' style='height:740px;width:1000px'>  ")
+displayHTML("<img src = https://github.com/kasri-mids/ucb-w261-sp2021-team25/blob/main/images/Inbound_Outbound_dataframes.svg?raw=true' style='height:740px;width:1000px'>  ")
 
 # COMMAND ----------
 
-# MAGIC %md ### Maximum Median Compute Flowchart
+# MAGIC %md ### Normalization using Maximum of Medians
 # MAGIC 
 # MAGIC How to compute Maximum Median which is used for normalization? 
 # MAGIC - Step1: we comute the houlry outbound/inbound counts for each airporlt/flight_date/hour.
@@ -583,7 +685,7 @@ displayHTML("<img src = https://github.com/kasri-mids/ucb-w261-sp2021-team25/blo
 
 # COMMAND ----------
 
-displayHTML("<img src = 'https://github.com/kasri-mids/ucb-w261-sp2021-team25/blob/main/images/compute_max_median_for_inbound_and_outbound.png?raw=true' style='height:740px;width:1000px'> '' ")
+displayHTML("<img src = 'https://github.com/kasri-mids/ucb-w261-sp2021-team25/blob/main/images/Calculate%20Max%20Median.svg?raw=true' style='height:740px;width:1000px'> '' ")
 
 # COMMAND ----------
 
@@ -657,26 +759,18 @@ displayHTML("<img src = 'https://github.com/kasri-mids/ucb-w261-sp2021-team25/bl
 # MAGIC - For instance: for a flight that departs at 11am at AirportA that has NORMALIZED_OUTBOUND_COUNT_2H = 20, means that normalized outbound counts from 8am-9am at airportA (1 hour timeframe, 2 hours prior the departure time) .
 # MAGIC 
 # MAGIC - Below are some example lag features for inbound & outbound features. We done this for all 3 sets of inbound/outbound features: inbound/outbound, diverted inbound/outobund, delay inbound/outbound. 
-# MAGIC     - OUTBOUND_COUNT_2H
-# MAGIC     - OUTBOUND_COUNT_3H
-# MAGIC     - OUTBOUND_COUNT_4H
-# MAGIC     - OUTBOUND_COUNT_5H
-# MAGIC     - OUTBOUND_COUNT_6H
-# MAGIC     - NORMALIZED_OUTBOUND_COUNT_2H
-# MAGIC     - NORMALIZED_OUTBOUND_COUNT_3H
-# MAGIC     - NORMALIZED_OUTBOUND_COUNT_4H
-# MAGIC     - NORMALIZED_OUTBOUND_COUNT_5H
-# MAGIC     - NORMALIZED_OUTBOUND_COUNT_6H
+# MAGIC     - OUTBOUND_COUNT_2H, OUTBOUND_COUNT_3H, OUTBOUND_COUNT_4H, OUTBOUND_COUNT_5H, OUTBOUND_COUNT_6H
+# MAGIC     - NORMALIZED_OUTBOUND_COUNT_2H, NORMALIZED_OUTBOUND_COUNT_3H, NORMALIZED_OUTBOUND_COUNT_4H, NORMALIZED_OUTBOUND_COUNT_5H, NORMALIZED_OUTBOUND_COUNT_6H
 
 # COMMAND ----------
 
-# MAGIC %md ###Join Inbound and Outbound Data with Airline_UTC_Main
+# MAGIC %md ###Join Inbound and Outbound Data with the Airline Data
 # MAGIC - We join the inbound and outbound related features with the airlines_utc_main table with these columns:
-# MAGIC   - for outbound: 
+# MAGIC   - For outbound: 
 # MAGIC     - call_sign_dep (the airport code)
 # MAGIC     - fl_date (flight date)
 # MAGIC     - dep_local_hour (the local hour at the departure airport)
-# MAGIC   - for inbound:
+# MAGIC   - For inbound:
 # MAGIC     - call_sign_arr
 # MAGIC     - fl_date
 # MAGIC     - arr_local_hour
@@ -684,15 +778,17 @@ displayHTML("<img src = 'https://github.com/kasri-mids/ucb-w261-sp2021-team25/bl
 # COMMAND ----------
 
 # MAGIC %md ## Diverted Inbound/Outbound Flights
+# MAGIC 
+# MAGIC We looked at the status of diverted inbound outbound flights when trying to generate features for our model. While the details are provided below, they did not find their way into the final model due to the sparsity of the diverted flight features.
 
 # COMMAND ----------
 
 # MAGIC %md 
 # MAGIC 
 # MAGIC ###Hypothesis
-# MAGIC - diverted flights will increase the traffic of the airport unexpectedly, and thus might potentially cause other flights at that airport to delay.
-# MAGIC - For each airport / day / hour, we calculated the number of diverted flights at that airport
-# MAGIC - When predicting flight delay, we take into account of the impact of diverted flight numbers at that airport
+# MAGIC - Diverted flights will increase the traffic of the airport unexpectedly, and thus might potentially cause other flights at that airport to delay.
+# MAGIC - For each airport / day / hour, we calculated the number of diverted flights at that airport.
+# MAGIC - When predicting flight delay, we take into account of the impact of diverted flight numbers at that airport.
 
 # COMMAND ----------
 
@@ -708,14 +804,19 @@ displayHTML("<img src = 'https://github.com/kasri-mids/ucb-w261-sp2021-team25/bl
 
 # COMMAND ----------
 
-# MAGIC %md ##Delay Inbound/Outbound Flights
+# MAGIC %md ##Delay Propagation
+# MAGIC 
+# MAGIC We used the tail number of the aircraft, scheduled for departure, to track its status. This is done 2 hours prior to departure. For example, let us sppose that an aircraft with tail number N953AT (a Delta Airlines aircraft) is flying out of Atlanta in 2 hours. At this point in time, we extract the current whereabouts of this particular aircraft and track it down to its previous departure. If we have any information regarding the departure of this aircraft, with respect to delay, we use it as long as the time at which this information is available is still 2 hours from departure. Additionally, we also use the amount of time it was delayed by as an additional feature. In the event that there is no information regarding the aircraft, we assume that there was no prior delay.
 
 # COMMAND ----------
 
 # MAGIC %md 
 # MAGIC 
+# MAGIC [review] - Karthik
+# MAGIC 
+# MAGIC 
 # MAGIC ###Hypothesis
-# MAGIC - Prior Delay flights at airport could be an indicating sign for further future delay for other flights 
+# MAGIC - Prior delay flights at airport could be an indicating sign for further future delay for other flights 
 # MAGIC - For each airport / day / hour, we calculated the number of delayed flights at that airport
 # MAGIC - When predict flight delay, take into account of that delayed flight numbers at that airport
 
@@ -734,14 +835,19 @@ displayHTML("<img src = 'https://github.com/kasri-mids/ucb-w261-sp2021-team25/bl
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC ## Data Quality
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC 
-# MAGIC ## Null Value Imputations
+# MAGIC ### Null Value Imputations
 # MAGIC 
 # MAGIC Our team largely used Spark SQL to join data together from various tables. Unfortunately, Spark’s MLLib will not work if the features will null values. Because of this, addressing nulls is extremely important for effective model results. 
 # MAGIC 
 # MAGIC Our ML pipeline approach involved generating features, and creating separate tables, then joining them back to the main airlines table via left joins. This allowed our team to work effectively in parallel to use a divide and conquer approach to generate interesting features. However, when joining the tables back together, a key issue we faced with these joins is null values.
 # MAGIC 
-# MAGIC We decided to impute the values differently, based on whether or not the feature was categorical or continuous.
+# MAGIC We decided to impute the values differently, based on whether the feature was categorical or continuous.
 # MAGIC 
 # MAGIC **Continuous**
 # MAGIC 
@@ -767,7 +873,7 @@ displayHTML("<img src = 'https://github.com/kasri-mids/ucb-w261-sp2021-team25/bl
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC In addition to creating this imputation approach, we carefully examined each one of our attributes prior to imputation. In some scenarios, where the values were highly populated with null values, we decided to either impute 0's instead, or drop the data outright. Furthermore, we performed EDA on the features with high nulls.
+# MAGIC In addition to creating this imputation approach, we carefully examined each one of our attributes prior to imputation. In some scenarios, where the values were highly populated with null values, we decided to either impute 0's instead, or drop the data outright from the model. Furthermore, we performed EDA on the features with high nulls, to ensure that when imputing the data, the distribution of the data had no significant imputation outliers.
 
 # COMMAND ----------
 
@@ -789,60 +895,38 @@ g.set(ylim=(None, None))
 
 # COMMAND ----------
 
-# MAGIC %md
+# MAGIC %md ### Data Leakage
 # MAGIC 
-# MAGIC [review]
-# MAGIC 
-# MAGIC #### [review] Describe how we prevent leakage
-# MAGIC 
-# MAGIC The data that is given is from 2015-2019. A key concern of ours was how to prevent leakage, or val or test datasets leaking into our test dataset. To set up our data pipeline to prevent leakage, we set up train, test, and validation training sets:
-# MAGIC 
-# MAGIC - Train - 01/01/2015 - 12/31/2017
-# MAGIC - Validation - 01/01/2018 - 12/31/2018
-# MAGIC - Test - 01/01/2019 - 12/31/2019
-# MAGIC 
-# MAGIC #### Describe train val and test
-# MAGIC 
-# MAGIC 
-# MAGIC 
-# MAGIC 
-# MAGIC 
-# MAGIC #### Describe intuition behind engineered features
-
-# COMMAND ----------
-
-# MAGIC %md ## Data Leakage
-# MAGIC 
-# MAGIC ### Why Prevent Data Leakage
+# MAGIC #### Why Prevent Data Leakage
 # MAGIC Data leakage is a critical part of ensuring our Machine Learning pipeline is as robust as possible. It is important to prevent data leakage when training the model because we want our model to predict well when it meets unseen data in a real world scenario. 
 # MAGIC 
 # MAGIC To ensure that our model doesn't predict delays/not-delay based on future information, we handle data with below approaches. 
 # MAGIC 
-# MAGIC ### Split Train/Test/Validation
+# MAGIC #### Split Train/Test/Validation
 # MAGIC The data that is given is from 2015-2019. A key concern of ours was how to prevent leakage, or val or test datasets leaking into our test dataset. To set up our data pipeline to prevent leakage, we set up train, test, and validation training sets:
 # MAGIC 
 # MAGIC - Train - 01/01/2015 - 12/31/2017
 # MAGIC - Validation - 01/01/2018 - 12/31/2018
 # MAGIC - Test - 01/01/2019 - 12/31/2019
 # MAGIC 
-# MAGIC ### Inbound & Outbound Statistics
+# MAGIC #### Inbound & Outbound Statistics
 # MAGIC - For the Inbound and Outbound related features, to prevent data leakage, so we connect the flights 
 # MAGIC - To prevent data-leakage, when calculating the median for inbound counts and outbound bounds, we only use data in 2015-2017 to calculate the median.
 # MAGIC - The reason we use only training data (data in 2015-2017) to calculate median is because our model shouldn't know any data from the future. 
-# MAGIC - So we calulate median based on data from 2015-2017, and used that to normalized all the data from 2015-2020. 
+# MAGIC - So we calculate median based on data from 2015-2017, and used that to normalized all the data from 2015-2020. 
 # MAGIC 
-# MAGIC ### Time Series Aspect of Inbound & Outbound Features
+# MAGIC #### Time Series Aspect of Inbound & Outbound Features
 # MAGIC - To account for the time series-aspect of the airline data, we also calculate something we called as lag features. 
-# MAGIC - These features ends like faeture_name_xH (for example: NORMALIZED_OUTBOUND_COUNT_2H)
-# MAGIC - For example NORMALIZED_OUTBOUND_COUNT_2H for a flight departs at 11am at AirportA, that means that normalized outbound counts from 8am-9am (1 hour interval, 2 hours prior the departure time) at airpotA.
+# MAGIC - These features ends like feature_name_xH (for example: NORMALIZED_OUTBOUND_COUNT_2H)
+# MAGIC - For example NORMALIZED_OUTBOUND_COUNT_2H for a flight departs at 11am at AirportA, that means that normalized outbound counts from 8am-9am (1 hour interval, 2 hours prior the departure time) at airportA.
 # MAGIC - Same theory applies for the inbound features. 
 # MAGIC 
-# MAGIC ### Weather Data
+# MAGIC #### Weather Data
 # MAGIC - To prevent data leakage, we only use weather data 2 hour prior the departure time of a particular flight
 # MAGIC - For example, if a flight's departure date is 1/1/2016 10am, then we only use weather feature up until 1/1/2016 8am to predict whether its delay
 # MAGIC 
-# MAGIC ### Page Rank
-# MAGIC - We only use data from 2015-2017 to compute pagerank features. 
+# MAGIC #### Page Rank
+# MAGIC - We only use data from 2015-2017 to compute pagerank features.
 
 # COMMAND ----------
 
@@ -862,9 +946,9 @@ g.set(ylim=(None, None))
 # MAGIC We split the data into train, validation and test sets. We used data between 2015-2017 for train, 2018 for validation and 2019 for test. For all models discussed here, we use 5-fold cross validation on the train set. We perform a parameter grid search on the train set and evaluate the candidate models on the validation set. Since our dataset is imbalanced, i.e., the number of delays is much smaller than the number of undelayed fights, \\( \approx 4 \\) times smaller, we use the sampling techniques discussed below to address the imbalance. 
 # MAGIC 
 # MAGIC All sampling experiments are only conducted on the train data. We chose 1,000,000 train records for training on a wide class of ML algorithms.
-# MAGIC * No over/under sampling: This is the baseline case with regards to sampling. No modifications are done to the train dataset.
-# MAGIC * Class-Weighted Sampling: Here, we do not modify the underlying train dataset but scale the losses to accomodate the imbalance.
-# MAGIC * Bootstrapping: We duplicate the minority class so that we are left with similar proportions of delay/no-delay records.
+# MAGIC * **No over/under sampling**: This is the baseline case with regards to sampling. No modifications are done to the train dataset.
+# MAGIC * **Class-Weighted sampling**: Here, we do not modify the underlying train dataset but scale the losses to accommodate the imbalance.
+# MAGIC * **Bootstrapping**: We duplicate the minority class so that we are left with similar proportions of delay/no-delay records.
 # MAGIC 
 # MAGIC Other kinds of oversampling such as SMOTE were considered but not pursued due to time constraints.
 
@@ -876,11 +960,12 @@ g.set(ylim=(None, None))
 # MAGIC 
 # MAGIC Model implementation was done in [this following notebook](https://dbc-c4580dc0-018b.cloud.databricks.com/?o=8229810859276230#notebook/606274953377686/command/4377823981614326).
 # MAGIC 
-# MAGIC For all the models discussed below, we ran the training exercise on randomly selected 1,000,000 records. We fine-tune the models on this smaller train set for faster model down selection and eventually run the preferred candidates on a larger 5,000,000 record dataset. We compared various models using the \\( F_{0.5} \\) score. We take the viewpoint of the Airport/Airline that is looking to have more precision in the predictions. Any decisions made on the delay predictions are likely to have cascading consequences in the origin airport as well as the destination.
+# MAGIC For all the models discussed below, we ran the training exercise on randomly selected 1,000,000 records. We fine-tune the models on this smaller train set for faster model down selection. We compared various models using the \\( F_{0.5} \\) score. We take the viewpoint of the Airport/Airline that is looking to have more precision in the predictions. Any decisions made on the delay predictions are likely to have cascading consequences in the origin airport as well as the destination.
 # MAGIC 
 # MAGIC Summary:
-# MAGIC * Our best model was found to be the eXtreme Gradient Boosted Model.
+# MAGIC * Our best model was found to be the eXtreme Gradient Boosted Model with class-weighted sampling.
 # MAGIC * We need to address the data imbalance. Without data balancing, the model performance was unstable. Class-weighting is the easiest option available.
+# MAGIC * We find that the prior delay information of an aircraft scheduled for departure can account for the most variance in the dataset. This was ascertained by observing the importance features of the Random Forest model.
 
 # COMMAND ----------
 
@@ -894,6 +979,7 @@ sns.boxplot(data=df_plot, x="Model", y="f0p5_score", ax=axes[0])
 axes[0].set_xticklabels(axes[0].get_xticklabels(), rotation=45, horizontalalignment='right')
 sns.boxplot(data=df_plot, x="Model", y="pr_AUC", ax=axes[1])
 axes[1].set_xticklabels(axes[1].get_xticklabels(), rotation=45, horizontalalignment='right')
+plt.suptitle('Test')
 
 # COMMAND ----------
 
@@ -901,9 +987,10 @@ axes[1].set_xticklabels(axes[1].get_xticklabels(), rotation=45, horizontalalignm
 # MAGIC 
 # MAGIC ##### Null Majority Class
 # MAGIC 
-# MAGIC We treat the majority class prediction as the null baseline model. The validation dataste has 100,000 records with \\( \approx 17.9\% \\) of them belonging to the majority 'No Delay' class. This results in
-# MAGIC * Baseline PR-AUC of 0.179
-# MAGIC * Baseline \\( F_{0.5} \\) of 0.179
+# MAGIC We treat the majority class prediction as the null baseline model. The validation dataset has 100,000 records with \\( \approx 17.9\% \\) of them belonging to the majority 'No Delay' class. This results in
+# MAGIC * Baseline accuracy of 82.1%
+# MAGIC * Baseline PR-AUC of 0.0
+# MAGIC * Baseline \\( F_{0.5} \\) of 0.0
 
 # COMMAND ----------
 
@@ -1006,6 +1093,14 @@ display(sqlContext.sql(""" select * from group25.experiment_results_new where Mo
 
 # MAGIC %md
 # MAGIC ##### Gradient Boosted Trees
+# MAGIC 
+# MAGIC Gradient boosted trees build on the idea of decision trees by adding in additional layers of trees that predict the error of the previous tree. The trees are then combined to improve prediction performance. They are called gradient boosted trees because gradient descent to minimize the loss function.
+# MAGIC 
+# MAGIC Observations:
+# MAGIC * We found the gradient boosted tree family to have better performance than other models investigated. here again, we observed that the sampling methodology had a significant impact in model performance.
+# MAGIC * We achieved a \\( F_{0.5} \\) score of 0.607 on the validation dataset (100,000 samples).
+# MAGIC 
+# MAGIC 
 # MAGIC Hyperparameters:
 # MAGIC * Max depth of tree: [3, 4, 5]
 # MAGIC * Number of trees: [3, 7, 11]
@@ -1018,6 +1113,13 @@ display(sqlContext.sql(""" select * from group25.experiment_results_new where Mo
 
 # MAGIC %md
 # MAGIC ##### eXtreme Gradient Boosted Trees
+# MAGIC 
+# MAGIC xgBoost is an optimized version of gradient boosted trees, which generally outperforms other implementations in terms of speed and results. Because of its speed, it is among the most popular models used by winning ML competition teams. 
+# MAGIC 
+# MAGIC Observations:
+# MAGIC * We found the extreme gradient boosting model to be the most robust of all models tested so far. The graphs shown below indicate that the choice of sampling has a bigger impact than that of the hyperparameters chosen.
+# MAGIC * We achieved a \\( F_{0.5} \\) score of 0.621 on the validation dataset (100,000 samples).
+# MAGIC 
 # MAGIC Hyperparameters:
 # MAGIC * Max depth of tree: [4, 8, 12]
 # MAGIC * Learning Rate: [0.001, 0.01, 0.1]
@@ -1025,14 +1127,6 @@ display(sqlContext.sql(""" select * from group25.experiment_results_new where Mo
 # COMMAND ----------
 
 display(sqlContext.sql(""" select * from group25.experiment_results_new where Model = 'eXtremeGradientBoostedTrees' and Prefix = 'Val' order by pr_AUC desc, f0p5_score desc""").head(30))
-
-# COMMAND ----------
-
-from IPython.display import Image 
-from IPython.core.display import HTML 
-#Image(url="https://www.google.com/logos/doodles/2021/celebrating-johannes-gutenberg-6753651837109212-l.png") 
-
-displayHTML("<img src = '/dbfs/FileStore/shared_uploads/jeffli930@berkeley.edu/w261_flowchart_1.png'>")
 
 # COMMAND ----------
 
@@ -1149,7 +1243,7 @@ GDUpdate(test_rdd2,  [0.01, 0.01, 0.01])
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC Next, let's run through 5 iterations
+# MAGIC Next, let's run through 5 iterations.
 
 # COMMAND ----------
 
@@ -1173,8 +1267,16 @@ for idx in range(nSteps):
 # MAGIC 
 # MAGIC Apply your algorithm to the training dataset and evaluate your results on the test set.
 # MAGIC 
-# MAGIC We chose the eXtreme Gradient Boosted model algorithm to train on a larger train data set and test on the hold=out test set. The model was trained on 5,000,000 train records and tested on 500,000 hold-out samples.
-# MAGIC The overall results are:
+# MAGIC We chose the eXtreme Gradient Boosted model algorithm to train on a larger train data set and test on the hold-out test set. The model was trained on 1,000,000 train records and tested on 5,000,000 hold-out samples.
+# MAGIC 
+# MAGIC The threshold is chosen to be 0.632 based on the performance of the model on validation data. This results in the following confusion matrix.
+# MAGIC 
+# MAGIC |Predicted/Actual|Predicted-0|Predicted-1|
+# MAGIC |---------|---|---|
+# MAGIC |Actual-0|394716|11401|
+# MAGIC |Actual-1|59492|33849|
+# MAGIC 
+# MAGIC **This model results in a Precision of 0.752, a recall of 0.362, and a \\( F_{0.5} \\) score of 0.619.**
 
 # COMMAND ----------
 
@@ -1187,22 +1289,25 @@ for idx in range(nSteps):
 # MAGIC %md
 # MAGIC ## Challenges & Learnings
 # MAGIC 
-# MAGIC Challenges:
+# MAGIC - **Downstream Impact:** There were many challenges that we had in trying to build our ML pipeline. For instance, as mentioned earlier in this notebook, time was a critical feature in building our ML pipeline. One issue we faced is we used DEP_TIME (the actual departure time) and CRS_DEP_TIME (the scheduled departure time) but made no distinction between the 2 early on. We only discovered this issue after we had started working on engineered features downstream, which caused some issues. For future practitioners in this space, it is important to note that ML pipelines can grow to be extremely complex. Ensuring that the right code is implemented, and the team has the proper understanding upstream can save a lot of pain and time downstream.
+# MAGIC - **Spark issues:** In the closing days of the project, we encountered several issues with the Spark cluster constantly restarting, which impacted our team's ability to iterate on hyperparameter tuning.
+# MAGIC - **Java/Python Interop:** Most of our code was in python, and this generally worked fine. However, we ran into problems dealing with the xGBoost library, as it is not a native python library and returned some wrapped Java structures that we weren't quite sure how to deal with. Perhaps we would have been better off using scala by default.
+# MAGIC - **A comment on scalability:** We leveraged some aspects of Spark, such as using UDFs and python specific functions to process time - ironically, using this approach took a lot of time compared to other Spark native functions. If the scale of the data was 10x'd, it is not certain that using this approach would be as efficient at scale..
+# MAGIC - **Volume of Data:** (weather) [Jeff]
+# MAGIC - **Development Processes** As we worked, we very gradually refined our development processes, but we would have benefitted from a more clearly defined process up front. Patterns for code organization, working outside of notebooks, using reliable storage for experiment results, and abstracting generic tasks are areas we could have spent more time on, in retrospect.
 # MAGIC 
-# MAGIC - 
 # MAGIC 
 # MAGIC ## Areas for Improvement
 # MAGIC 
-# MAGIC - Look for additional features
+# MAGIC - Topic Specific Page Rank: Topic-sensitive page rank computes page rank scores with a bias towards a specific topic. This is done by distributing the mass of dangling nodes to only vertexes idetified within the topic. Another way to say this is that our random traveller would only be able to teleport to locations marked as being part of the topic.
+# MAGIC - Streaming updates to Page Rank [5]
+# MAGIC - Look for additional features / data sources
 # MAGIC - Experiment with additional time lags
-
-# COMMAND ----------
-
- [review]
-
-
-
-[Model]
+# MAGIC - Time Series Analysis
+# MAGIC - Real time updates of features like Page Rank
+# MAGIC - Capacity of airports from 2015-2019 to normalize the inbound & outbound statistics
+# MAGIC - Interview practitioners or stakeholders to get different perspectives
+# MAGIC - Ensemble Methods - we might apply different models for different data conditions.
 
 # COMMAND ----------
 
@@ -1210,17 +1315,15 @@ for idx in range(nSteps):
 # MAGIC 
 # MAGIC  Pick 3-5 key course concepts and discuss how your work on this assignment illustrates an understanding of these concepts.
 # MAGIC  
-# MAGIC  
-# MAGIC   
-# MAGIC ## Normalization 
+# MAGIC - **Normalization:** When examining our inbound/outbound flights, we scaled each feature to ensure that the number of flights was normalized by the overall traffic at the airport. Additionally, when setting up our data to be used for training, we scaled all of our data from 0 to 1.
 # MAGIC 
-# MAGIC ## Assumptions for Different Algorithms
+# MAGIC - **Assumptions for Different Algorithms:**
 # MAGIC 
-# MAGIC ## Page Rank *  Justin
+# MAGIC - **Page Rank:** Our team attempted several iterations of page rank and used it as a feature in building out our model. We used the understanding of PageRank we built in class to consider various ways of building graphs, and what Page Rank means with respect to their structure. We did investigate and discuss the use of Topic Sensitive PageRank, which was also covered in class, although we did not end up having time to implement it. 
 # MAGIC 
-# MAGIC ## Regularization
+# MAGIC - **Regularization:** We applied regularization when training models such as Logistic Regression.
 # MAGIC 
-# MAGIC ##  One Hot Encoding / vector embeddings / feature selection
+# MAGIC - **One Hot Encoding / vector embeddings / feature selection:** For our categorical variables, we applied one hot encoding when utilizing Spark's MLLib
 
 # COMMAND ----------
 
@@ -1230,6 +1333,8 @@ for idx in range(nSteps):
 
 # MAGIC %md
 # MAGIC ## List of Features
+# MAGIC 
+# MAGIC Below is a table of features we generated.
 # MAGIC 
 # MAGIC |Column name|Description|Categorical/Continuous|
 # MAGIC |-------------------|-------------------|-------------------|
@@ -1283,10 +1388,22 @@ for idx in range(nSteps):
 # MAGIC |WND_SPEED_AVG|Average of wind speed from the NOAA dataset 2 hours prior, binned on airport, date, and hourly |Continouous|
 # MAGIC |TMP_AIR_TEMPERATURE_AVG|Average of temperature from the NOAA dataset 2 hours prior, binned on airport, date, and hourly |Continouous|
 # MAGIC |SLP_ATMOSPHERIC_PRESSURE_AVG|Average of SLP atmospheric pressure from the NOAA dataset 2 hours prior, binned on airport, date, and hourly |Continouous|
+# MAGIC |ORIGIN_PR|Page Rank of the origin Airport|Continouous|
+# MAGIC |DEST_PR|Page Rank of the destination Airport|Continouous|
+# MAGIC |PR_AA_ORIGIN|Page Rank of the origin Airport and Airline|Continouous|
+# MAGIC |PR_AA_DEST|Page Rank of the destination Airport and Airline|Continouous|
+# MAGIC |PR_AAD_ORIGIN|Page Rank of the origin Airport and Airline on a given Day|Continouous|
+# MAGIC |PR_AAD_DEST|Page Rank of the destination Airport and Airline on a given Day|Continouous|
+# MAGIC |PR_AADD_ORIGIN|Page Rank of the origin Airport and Airline on a given Day, only Delayed Flights as Edges|Continouous|
+# MAGIC |PR_AADD_DEST|Page Rank of the destination Airport and Airline on a given Day, only Delayed Flights as Edges|Continouous|
+# MAGIC |PR_FL|Page Rank of the Flight in the Flight-Vertex Graph|Continouous|
+# MAGIC |PR_FLD|Page Rank of the Flight in the Flight-Vertex Graph on a Given Day|Continouous|
+# MAGIC |PR_FLDH|Page Rank of the Flight in the Flight-Vertex Graph on a Given Day of Week|Continouous|
 
 # COMMAND ----------
 
-# MAGIC %md # Some reference publications & websites:
+# MAGIC %md ## Some reference publications & websites:
+# MAGIC 
 # MAGIC 1) 2017. A Review on Flight Delay Prediction. Alice Sternberg, Jorge de Abreu Soares, Diego Carvalho, Eduardo S. Ogasawara
 # MAGIC 
 # MAGIC 2) 2019. A Data Mining Approach to Flight Arrival Delay Prediction for American Airlines. Navoneel Chakrabarty
@@ -1294,6 +1411,12 @@ for idx in range(nSteps):
 # MAGIC 3) 2019. Development of a predictive model for on-time arrival flight of airliner by discovering correlation between flight and weather data. Noriko Etani.
 # MAGIC 
 # MAGIC 4) https://stat-or.unc.edu/wp-content/uploads/sites/182/2018/09/Paper3_MSOM_2012_AirlineFlightDelays.pdf
+# MAGIC 
+# MAGIC 5) J. Riedy, "Updating PageRank for Streaming Graphs," 2016 IEEE International Parallel and Distributed Processing Symposium Workshops (IPDPSW), Chicago, IL, USA, 2016, pp. 877-884, doi: 10.1109/IPDPSW.2016.22.
+# MAGIC 
+# MAGIC 6) Gopalakrishnan, Karthik & Balakrishnan, Hamsa. (2017). A comparative analysis of models for predicting delays in air traffic networks. 
+# MAGIC 
+# MAGIC 7) 2016. XGBoost: A Scalable Tree Boosting System. Chen, Tianqi and Guestrin, Carlos. 
 
 # COMMAND ----------
 
